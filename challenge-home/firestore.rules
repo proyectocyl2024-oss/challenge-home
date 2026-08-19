@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Catálogo de productos: lectura y escritura abiertas. El panel /admin
+    // no tiene login — quien sepa hablar directo con la API de Firestore
+    // podría escribir acá igual, pero para un catálogo sin datos sensibles
+    // está bien así.
+    match /challenge_productos/{productId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Categorías del catálogo: mismo criterio que challenge_productos.
+    match /challenge_categorias/{categoryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Todo lo demás en esta base queda bloqueado por las dudas.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
