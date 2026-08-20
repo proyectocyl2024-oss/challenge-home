@@ -62,6 +62,11 @@ export async function fetchProducts(): Promise<Product[]> {
   });
 }
 
+export async function fetchProductBySlug(slug: string): Promise<Product | null> {
+  const products = await fetchProducts();
+  return products.find((p) => p.slug === slug) ?? null;
+}
+
 export async function createProduct(input: ProductInput) {
   const db = getDb();
   const slug = input.slug || slugify(input.name);
