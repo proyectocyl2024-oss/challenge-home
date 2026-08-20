@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { Product } from "@/data/products";
 import { useCartStore } from "@/store/cartStore";
 
@@ -30,7 +31,7 @@ export default function ProductCard({ product }: { product: Product }) {
 
   return (
     <div className="product-card">
-      <div className="product-card__frame">
+      <Link href={`/productos/${product.slug}`} className="product-card__frame">
         {product.video ? (
           <video
             src={product.video}
@@ -53,9 +54,11 @@ export default function ProductCard({ product }: { product: Product }) {
         ) : discount ? (
           <span className="product-card__badge product-card__badge--sale">{discount}% OFF</span>
         ) : null}
-      </div>
+      </Link>
 
-      <h3 className="product-card__name">{product.name}</h3>
+      <Link href={`/productos/${product.slug}`}>
+        <h3 className="product-card__name">{product.name}</h3>
+      </Link>
 
       <div className="product-card__prices">
         <span className="product-card__price">{formatARS(product.price)}</span>
