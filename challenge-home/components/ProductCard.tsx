@@ -56,7 +56,7 @@ export default function ProductCard({ product }: { product: Product }) {
         ) : null}
       </Link>
 
-      <Link href={`/productos/${product.slug}`}>
+      <Link href={`/productos/${product.slug}`} style={{ display: "block" }}>
         <h3 className="product-card__name">{product.name}</h3>
       </Link>
 
