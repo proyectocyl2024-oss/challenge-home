@@ -57,8 +57,21 @@ del navegador).
 ### Categorías
 
 Desde el panel podés crear categorías y asignarle una a cada producto.
-Aparecen en el menú de arriba de la home (dinámico, se actualiza solo) y
-como pills de filtro arriba del grid de "Destacados".
+Aparecen en el menú de arriba de la home (dinámico, se actualiza solo). Ya
+no hay una segunda fila de "pills" repitiendo las mismas categorías debajo
+del título "Destacados" — se sacó, quedaba duplicado.
+
+En mobile, si hay muchas categorías, el menú de arriba se desliza
+horizontalmente dentro de su propio espacio en vez de empujar toda la
+página hacia el costado.
+
+### Mostrar/ocultar producto en la home
+
+En el formulario de producto hay un checkbox "Mostrar este producto en la
+home / Destacados", tildado por defecto. Si lo destildás, ese producto
+sigue existiendo en el catálogo (podés seguir vendiéndolo desde `/ventas`,
+por ejemplo) pero no aparece en la página pública. Útil para productos que
+solo vendés en el local, o que todavía no querés publicar.
 
 ### Auditoría de cambios de stock
 
@@ -185,14 +198,25 @@ reseñas reales en Google Maps.
 - Migrar el checkout de WhatsApp a Mercado Pago Checkout Pro.
 - Botón de arrepentimiento y defensa del consumidor en el footer (requisito
   legal AR).
-- Historial de ventas con borrado individual en `/ventas`: con el rediseño
-  tipo punto de venta, se perdió la lista de ventas ya cargadas que tenía
-  la versión anterior (con botón de borrar y reposición automática de
-  stock). Hoy, si te equivocás cargando una venta, no hay forma de
-  corregirla desde la interfaz — habría que ajustarlo a mano en Firestore
-  Console (colección `challenge_ventas`, y `challenge_productos` si hace
-  falta corregir el stock también). Avisame si querés que le sume esa
-  vista de vuelta.
+- Logo real de CHALLENGE en el comprobante PDF (hoy es solo texto "CHALLENGE"
+  en la tipografía del sistema; falta insertar la imagen del logo).
+- Vista del historial de auditoría de cambios de stock (motivo + firma) —
+  hoy ese registro se guarda en Firestore (`challenge_stock_log`) pero solo
+  se puede consultar entrando directo a Firebase Console, no hay pantalla
+  en el sitio para verlo.
+
+## Historial de ventas editable
+
+En `/contabilidad`, debajo de los totales por producto y por medio de pago,
+hay una lista con cada venta cargada: fecha, producto, cantidad, precio,
+forma de pago y total. Cada fila tiene botones **Editar** y **Borrar**:
+
+- **Editar** abre un formulario inline para cambiar fecha, cantidad, precio
+  unitario o forma de pago. Si la venta está vinculada a un producto del
+  catálogo, el stock se ajusta automáticamente por la diferencia (si
+  bajaste la cantidad, repone; si la subiste, descuenta más).
+- **Borrar** elimina la venta y, si estaba vinculada a un producto, le
+  repone el stock completo de esa línea.
 
 ## Paleta
 

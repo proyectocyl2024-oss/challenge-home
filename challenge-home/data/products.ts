@@ -13,6 +13,7 @@ export type Product = {
   image: string;
   video?: string; // opcional: si está, se muestra en loop en vez de la foto
   category?: string; // slug de la categoría (ver lib/categories.ts)
+  featured?: boolean; // si es false, no se muestra en la home. Default true.
   tag?: "nuevo" | "ultimas-unidades" | "sin-stock";
 };
 

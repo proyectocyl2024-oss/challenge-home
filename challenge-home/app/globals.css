@@ -32,6 +32,7 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden; /* red de seguridad: nada empuja la página hacia el costado */
 }
 
 .brand-watermark {
@@ -107,6 +108,14 @@ button {
   font-size: 14px;
   font-weight: 500;
   color: var(--plum-800);
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+}
+
+.site-header__nav::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .site-header__nav a {
@@ -294,6 +303,21 @@ button {
   .product-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 20px;
+  }
+  .site-header__row {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+  .site-header__nav {
+    gap: 16px;
+    max-width: 40vw;
+  }
+  .site-header__logo {
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .cart-button {
+    flex-shrink: 0;
   }
 }
 

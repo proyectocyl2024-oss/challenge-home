@@ -16,6 +16,8 @@ import {
   type Category,
 } from "@/lib/categories";
 import { logStockChange } from "@/lib/stockLog";
+import StockLogHistory from "./StockLogHistory";
+import InternalNav from "./InternalNav";
 
 const formatARS = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
@@ -48,6 +50,7 @@ export default function AdminPanel() {
   const [video, setVideo] = useState("");
   const [category, setCategory] = useState("");
   const [tag, setTag] = useState<"" | "nuevo" | "ultimas-unidades" | "sin-stock">("");
+  const [featured, setFeatured] = useState(true);
 
   // --- Auditoría de cambios de stock (solo al editar un producto existente) ---
   const [originalStock, setOriginalStock] = useState<number | null>(null);
@@ -117,6 +120,7 @@ export default function AdminPanel() {
     setVideo("");
     setCategory("");
     setTag("");
+    setFeatured(true);
     setOriginalStock(null);
     setStockMotivo("");
     setStockFirma("");
@@ -137,6 +141,7 @@ export default function AdminPanel() {
     setVideo(p.video ?? "");
     setCategory(p.category ?? "");
     setTag((p.tag as any) ?? "");
+    setFeatured(p.featured ?? true);
     setOriginalStock(p.stock);
     setStockMotivo("");
     setStockFirma("");
@@ -186,6 +191,7 @@ export default function AdminPanel() {
       image: image.trim(),
       video: video.trim() || undefined,
       category: category || undefined,
+      featured,
       tag: tag || undefined,
     };
 
@@ -232,13 +238,15 @@ export default function AdminPanel() {
   }
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px", fontFamily: "var(--font-body)" }}>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, color: "var(--plum-950)" }}>
-        Panel de productos — CHALLENGE
-      </h1>
-      <p style={{ color: "rgba(36,19,34,0.6)", fontSize: 14, marginBottom: 32 }}>
-        Cargá y editá el catálogo acá.
-      </p>
+    <>
+      <InternalNav current="admin" />
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px", fontFamily: "var(--font-body)" }}>
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, color: "var(--plum-950)" }}>
+          Panel de productos — CHALLENGE
+        </h1>
+        <p style={{ color: "rgba(36,19,34,0.6)", fontSize: 14, marginBottom: 32 }}>
+          Cargá y editá el catálogo acá.
+        </p>
 
       {error && (
         <div
@@ -358,6 +366,19 @@ export default function AdminPanel() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+        </div>
+
+        <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10 }}>
+          <input
+            type="checkbox"
+            id="featured-checkbox"
+            checked={featured}
+            onChange={(e) => setFeatured(e.target.checked)}
+            style={{ width: 18, height: 18 }}
+          />
+          <label htmlFor="featured-checkbox" style={{ fontSize: 13, color: "var(--plum-800)", fontWeight: 600 }}>
+            Mostrar este producto en la home / Destacados
+          </label>
         </div>
 
         <div>
@@ -601,7 +622,10 @@ export default function AdminPanel() {
           ))}
         </div>
       )}
-    </div>
+
+      <StockLogHistory />
+      </div>
+    </>
   );
 }
 

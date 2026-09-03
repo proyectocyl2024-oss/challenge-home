@@ -59,6 +59,7 @@ export async function fetchProducts(): Promise<Product[]> {
       image: data.image ?? "",
       video: data.video ?? undefined,
       category: data.category ?? undefined,
+      featured: data.featured ?? true,
       tag: data.tag ?? undefined,
     } as Product;
   });

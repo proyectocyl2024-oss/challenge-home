@@ -6,6 +6,8 @@ import { fetchProducts, adjustProductStock } from "@/lib/products";
 import { fetchCategories, type Category } from "@/lib/categories";
 import { createSale, type PaymentMethod } from "@/lib/sales";
 import { downloadReceiptPdf } from "@/lib/receipt";
+import SalesHistory from "./SalesHistory";
+import InternalNav from "./InternalNav";
 
 const formatARS = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
@@ -39,6 +41,7 @@ export default function SalesPanel() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("efectivo");
   const [confirming, setConfirming] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [lastReceipt, setLastReceipt] = useState<{
@@ -170,6 +173,7 @@ export default function SalesPanel() {
       setPaymentMethod("efectivo");
       setCustomerName("");
       setCustomerPhone("");
+      setHistoryRefreshKey((k) => k + 1);
       await load();
     } catch (e) {
       console.error(e);
@@ -213,12 +217,14 @@ export default function SalesPanel() {
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "var(--font-body)" }}>
-      {/* --- Columna izquierda: catálogo --- */}
-      <div style={{ flex: 1, padding: "28px 24px", overflowY: "auto" }}>
-        <h1
-          style={{
-            fontFamily: "var(--font-display)",
+    <>
+      <InternalNav current="ventas" />
+      <div style={{ display: "flex", minHeight: "100vh", fontFamily: "var(--font-body)" }}>
+        {/* --- Columna izquierda: catálogo --- */}
+        <div style={{ flex: 1, padding: "28px 24px", overflowY: "auto" }}>
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
             fontSize: 26,
             color: "var(--plum-950)",
             marginBottom: 18,
@@ -413,6 +419,8 @@ export default function SalesPanel() {
             </div>
           )}
         </div>
+
+        <SalesHistory refreshKey={historyRefreshKey} />
       </div>
 
       {/* --- Columna derecha: carrito --- */}
@@ -587,6 +595,7 @@ export default function SalesPanel() {
         )}
       </div>
     </div>
+    </>
   );
 }
 

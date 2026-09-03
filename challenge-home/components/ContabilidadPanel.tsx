@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchSales, type Sale, type PaymentMethod } from "@/lib/sales";
+import { fetchSales, updateSale, deleteSale, type Sale, type PaymentMethod } from "@/lib/sales";
+import { adjustProductStock } from "@/lib/products";
+import InternalNav from "./InternalNav";
 
 const formatARS = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
@@ -24,14 +26,28 @@ export default function ContabilidadPanel() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("mes");
 
+  // --- Edición de ventas en el historial ---
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editPayment, setEditPayment] = useState<PaymentMethod>("efectivo");
+  const [editDate, setEditDate] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    try {
+      const data = await fetchSales();
+      setSales(data);
+    } catch (e) {
+      console.error(e);
+      setError("No se pudieron cargar las ventas. Revisá la configuración de Firebase.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    fetchSales()
-      .then(setSales)
-      .catch((e) => {
-        console.error(e);
-        setError("No se pudieron cargar las ventas. Revisá la configuración de Firebase.");
-      })
-      .finally(() => setLoading(false));
+    load();
   }, []);
 
   const filtered = useMemo(() => {
@@ -74,18 +90,77 @@ export default function ContabilidadPanel() {
   const grandTotal = filtered.reduce((sum, s) => sum + s.total, 0);
   const totalUnits = filtered.reduce((sum, s) => sum + s.quantity, 0);
 
+  function startEdit(s: Sale) {
+    setEditingId(s.id);
+    setEditQty(String(s.quantity));
+    setEditPrice(String(s.unitPrice));
+    setEditPayment(s.paymentMethod);
+    setEditDate(s.date);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  async function saveEdit(sale: Sale) {
+    const newQty = Number(editQty) || 1;
+    const newPrice = Number(editPrice) || 0;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateSale(sale.id, {
+        date: editDate,
+        quantity: newQty,
+        unitPrice: newPrice,
+        total: newQty * newPrice,
+        paymentMethod: editPayment,
+      });
+      // Ajustar stock por la diferencia, si la venta está vinculada a un producto del catálogo
+      if (sale.productId) {
+        const delta = sale.quantity - newQty; // si vendiste menos ahora, repone; si vendiste más, descuenta más
+        if (delta !== 0) {
+          await adjustProductStock(sale.productId, delta);
+        }
+      }
+      setEditingId(null);
+      await load();
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo guardar el cambio.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteSale(sale: Sale) {
+    if (!confirm("¿Borrar esta venta? Si estaba vinculada a un producto, se le repone el stock.")) return;
+    setError(null);
+    try {
+      await deleteSale(sale.id);
+      if (sale.productId) {
+        await adjustProductStock(sale.productId, sale.quantity);
+      }
+      await load();
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo borrar la venta.");
+    }
+  }
+
   if (loading) {
     return <div style={{ padding: 40, textAlign: "center" }}>Cargando...</div>;
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px 24px", fontFamily: "var(--font-body)" }}>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 30, color: "var(--plum-950)" }}>
-        Contabilidad — CHALLENGE
-      </h1>
-      <p style={{ color: "rgba(36,19,34,0.6)", fontSize: 13, marginBottom: 24 }}>
-        Totales calculados a partir de lo cargado en /ventas.
-      </p>
+    <>
+      <InternalNav current="contabilidad" />
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px 24px", fontFamily: "var(--font-body)" }}>
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 30, color: "var(--plum-950)" }}>
+          Contabilidad — CHALLENGE
+        </h1>
+        <p style={{ color: "rgba(36,19,34,0.6)", fontSize: 13, marginBottom: 24 }}>
+          Totales calculados a partir de lo cargado en /ventas.
+        </p>
 
       {error && (
         <div
@@ -165,7 +240,7 @@ export default function ContabilidadPanel() {
       {byPayment.length === 0 ? (
         <p style={{ color: "rgba(36,19,34,0.5)", fontSize: 14 }}>Sin datos en este período.</p>
       ) : (
-        <div>
+        <div style={{ marginBottom: 32 }}>
           {byPayment.map(([method, amount]) => (
             <div key={method} style={rowStyle}>
               <div style={{ flex: 1 }}>{PAYMENT_LABELS[method]}</div>
@@ -174,9 +249,149 @@ export default function ContabilidadPanel() {
           ))}
         </div>
       )}
-    </div>
+
+      <h2 style={sectionTitle}>Historial de ventas</h2>
+      {filtered.length === 0 ? (
+        <p style={{ color: "rgba(36,19,34,0.5)", fontSize: 14 }}>Sin ventas en este período.</p>
+      ) : (
+        <div>
+          {filtered.map((s) =>
+            editingId === s.id ? (
+              <div
+                key={s.id}
+                style={{
+                  border: "2px solid var(--coral-500)",
+                  borderRadius: 12,
+                  padding: 14,
+                  marginBottom: 8,
+                  background: "#fff",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                  gap: 10,
+                }}
+              >
+                <div style={{ gridColumn: "1 / -1", fontSize: 13, fontWeight: 600 }}>
+                  Editando: {s.productName}
+                </div>
+                <div>
+                  <label style={editLabel}>Fecha</label>
+                  <input style={editInput} type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                </div>
+                <div>
+                  <label style={editLabel}>Cantidad</label>
+                  <input style={editInput} type="number" value={editQty} onChange={(e) => setEditQty(e.target.value)} />
+                </div>
+                <div>
+                  <label style={editLabel}>Precio unitario</label>
+                  <input style={editInput} type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+                </div>
+                <div>
+                  <label style={editLabel}>Forma de pago</label>
+                  <select
+                    style={editInput}
+                    value={editPayment}
+                    onChange={(e) => setEditPayment(e.target.value as PaymentMethod)}
+                  >
+                    {Object.entries(PAYMENT_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, marginTop: 4 }}>
+                  <button
+                    onClick={() => saveEdit(s)}
+                    disabled={saving}
+                    style={{
+                      background: "var(--coral-500)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "8px 18px",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    {saving ? "Guardando..." : "Guardar"}
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid var(--plum-800)",
+                      color: "var(--plum-800)",
+                      borderRadius: 999,
+                      padding: "8px 18px",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={s.id} style={rowStyle}>
+                <div style={{ width: 90, color: "rgba(36,19,34,0.5)" }}>{s.date}</div>
+                <div style={{ flex: 1 }}>
+                  {s.productName} · {s.quantity} u. × {formatARS(s.unitPrice)}
+                </div>
+                <div style={{ width: 100, color: "rgba(36,19,34,0.6)" }}>{PAYMENT_LABELS[s.paymentMethod]}</div>
+                <div style={{ width: 90, fontWeight: 600, textAlign: "right" }}>{formatARS(s.total)}</div>
+                <button
+                  onClick={() => startEdit(s)}
+                  style={{
+                    border: "1px solid var(--plum-800)",
+                    color: "var(--plum-800)",
+                    background: "transparent",
+                    borderRadius: 999,
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDeleteSale(s)}
+                  style={{
+                    border: "1px solid #a3271e",
+                    color: "#a3271e",
+                    background: "transparent",
+                    borderRadius: 999,
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Borrar
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      )}
+      </div>
+    </>
   );
 }
+
+const editLabel: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "var(--plum-800)",
+  marginBottom: 4,
+};
+
+const editInput: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "1px solid var(--line)",
+  fontSize: 13,
+};
 
 const cardStyle: React.CSSProperties = {
   background: "var(--cream-100)",

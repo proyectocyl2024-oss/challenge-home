@@ -3,6 +3,7 @@ import {
   doc,
   getDocs,
   addDoc,
+  updateDoc,
   deleteDoc,
   serverTimestamp,
   orderBy,
@@ -67,4 +68,9 @@ export async function createSale(input: SaleInput) {
 export async function deleteSale(id: string) {
   const db = getDb();
   return deleteDoc(doc(db, COLLECTION, id));
+}
+
+export async function updateSale(id: string, patch: Partial<SaleInput>) {
+  const db = getDb();
+  return updateDoc(doc(db, COLLECTION, id), removeUndefined({ ...patch }));
 }

@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { CHALLENGE_LOGO_BASE64 } from "./logoBase64";
 
 export type ReceiptLine = {
   name: string;
@@ -44,23 +45,29 @@ export function generateReceiptPdf(data: ReceiptData): jsPDF {
   doc.setFillColor(...CREAM);
   doc.rect(0, 0, pageWidth, 34, "F");
 
+  // Logo (emblema circular del zorro), tamaño fijo, alineado a la izquierda
+  const logoSize = 20;
+  doc.addImage(CHALLENGE_LOGO_BASE64, "PNG", marginX, 7, logoSize, logoSize * (625 / 618));
+
+  const textX = marginX + logoSize + 6;
+
   doc.setTextColor(...PLUM);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.text("CHALLENGE", marginX, y);
+  doc.setFontSize(18);
+  doc.text("CHALLENGE", textX, y - 2);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
-  y += 7;
-  doc.text("Comprobante de venta", marginX, y);
+  y += 5;
+  doc.text("Comprobante de venta", textX, y);
 
   doc.setFontSize(8);
   doc.setTextColor(90, 80, 88);
   y += 6;
-  doc.text(STORE_ADDRESS, marginX, y);
+  doc.text(STORE_ADDRESS, textX, y);
   y += 4.5;
-  doc.text(`WhatsApp: ${STORE_WHATSAPP}`, marginX, y);
+  doc.text(`WhatsApp: ${STORE_WHATSAPP}`, textX, y);
 
   y = 42;
 
