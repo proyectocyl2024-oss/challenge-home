@@ -331,9 +331,21 @@ export default function SalesPanel() {
                     marginBottom: 8,
                   }}
                 >
-                  {p.image && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  {p.video ? (
+                    <video
+                      src={p.video}
+                      poster={p.image || undefined}
+                      muted
+                      loop
+                      autoPlay
+                      playsInline
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    p.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    )
                   )}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-950)", marginBottom: 4 }}>

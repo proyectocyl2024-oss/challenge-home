@@ -23,6 +23,7 @@ export default function ProductoPage() {
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
+  const [activeMediaIndex, setActiveMediaIndex] = useState<number>(-2); // -1 = video, 0+ = índice en la galería de fotos
 
   const addItem = useCartStore((s) => s.addItem);
 
@@ -34,6 +35,7 @@ export default function ProductoPage() {
         if (p) {
           setSelectedColor(p.colors[0] ?? "");
           setSelectedSize(p.sizes[0] ?? "");
+          setActiveMediaIndex(p.video ? -1 : 0);
         }
       })
       .catch((e) => {
@@ -92,28 +94,59 @@ export default function ProductoPage() {
         </Link>
 
         <div className="product-detail__grid">
-          <div className="product-detail__media">
-            {product.video ? (
-              <video
-                src={product.video}
-                poster={product.image || undefined}
-                muted
-                loop
-                autoPlay
-                playsInline
-              />
-            ) : (
-              product.image && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={product.image} alt={product.name} />
-              )
-            )}
-            {outOfStock ? (
-              <span className="product-card__badge product-card__badge--out">Sin stock</span>
-            ) : product.tag === "nuevo" ? (
-              <span className="product-card__badge">Nuevo</span>
-            ) : discount ? (
-              <span className="product-card__badge product-card__badge--sale">{discount}% OFF</span>
+          <div>
+            <div className="product-detail__media">
+              {activeMediaIndex === -1 && product.video ? (
+                <video
+                  src={product.video}
+                  poster={product.image || undefined}
+                  muted
+                  loop
+                  autoPlay
+                  playsInline
+                />
+              ) : (
+                (() => {
+                  const gallery = [product.image, ...(product.images ?? [])].filter(Boolean);
+                  const src = gallery[activeMediaIndex] ?? product.image;
+                  return (
+                    src && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={src} alt={product.name} />
+                    )
+                  );
+                })()
+              )}
+              {outOfStock ? (
+                <span className="product-card__badge product-card__badge--out">Sin stock</span>
+              ) : product.tag === "nuevo" ? (
+                <span className="product-card__badge">Nuevo</span>
+              ) : discount ? (
+                <span className="product-card__badge product-card__badge--sale">{discount}% OFF</span>
+              ) : null}
+            </div>
+
+            {(product.images && product.images.length > 0) || product.video ? (
+              <div className="product-detail__thumbs">
+                {product.video && (
+                  <button
+                    className={`product-detail__thumb ${activeMediaIndex === -1 ? "product-detail__thumb--active" : ""}`}
+                    onClick={() => setActiveMediaIndex(-1)}
+                  >
+                    <video src={product.video} muted playsInline />
+                  </button>
+                )}
+                {[product.image, ...(product.images ?? [])].filter(Boolean).map((url, i) => (
+                  <button
+                    key={i}
+                    className={`product-detail__thumb ${activeMediaIndex === i ? "product-detail__thumb--active" : ""}`}
+                    onClick={() => setActiveMediaIndex(i)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt={`${product.name} foto ${i + 1}`} />
+                  </button>
+                ))}
+              </div>
             ) : null}
           </div>
 

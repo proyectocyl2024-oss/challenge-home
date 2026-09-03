@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import FeaturedGridLive from "@/components/FeaturedGridLive";
 import CartDrawer from "@/components/CartDrawer";
 import LocationSection from "@/components/LocationSection";
+import HeroVideo from "@/components/HeroVideo";
 
 export default function HomePage() {
   return (
@@ -24,15 +25,7 @@ export default function HomePage() {
           </a>
         </div>
         <div className="hero__visual">
-          <video
-            className="hero__visual-video"
-            autoPlay
-            muted
-            loop
-            playsInline
-          >
-            <source src="/hero-loop.mp4" type="video/mp4" />
-          </video>
+          <HeroVideo />
         </div>
       </section>
 

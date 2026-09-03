@@ -18,6 +18,7 @@ import {
 import { logStockChange } from "@/lib/stockLog";
 import StockLogHistory from "./StockLogHistory";
 import InternalNav from "./InternalNav";
+import { fetchSiteConfig, updateSiteConfig } from "@/lib/siteConfig";
 
 const formatARS = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
@@ -31,6 +32,11 @@ export default function AdminPanel() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // --- Configuración del sitio (video del hero) ---
+  const [heroVideoUrl, setHeroVideoUrl] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
 
   // --- Categorías ---
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -47,6 +53,8 @@ export default function AdminPanel() {
   const [colors, setColors] = useState("");
   const [sizes, setSizes] = useState("");
   const [image, setImage] = useState("");
+  const [extraImages, setExtraImages] = useState<string[]>([]);
+  const [newExtraImage, setNewExtraImage] = useState("");
   const [video, setVideo] = useState("");
   const [category, setCategory] = useState("");
   const [tag, setTag] = useState<"" | "nuevo" | "ultimas-unidades" | "sin-stock">("");
@@ -61,9 +69,14 @@ export default function AdminPanel() {
     setLoading(true);
     setError(null);
     try {
-      const [prods, cats] = await Promise.all([fetchProducts(), fetchCategories()]);
+      const [prods, cats, siteConfig] = await Promise.all([
+        fetchProducts(),
+        fetchCategories(),
+        fetchSiteConfig(),
+      ]);
       setProducts(prods);
       setCategories(cats);
+      setHeroVideoUrl(siteConfig.heroVideoUrl ?? "");
     } catch (e) {
       console.error(e);
       setError(
@@ -77,6 +90,22 @@ export default function AdminPanel() {
   useEffect(() => {
     load();
   }, []);
+
+  async function handleSaveConfig(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingConfig(true);
+    setConfigSaved(false);
+    try {
+      await updateSiteConfig({ heroVideoUrl: heroVideoUrl.trim() || undefined });
+      setConfigSaved(true);
+      setTimeout(() => setConfigSaved(false), 2500);
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo guardar la configuración del sitio.");
+    } finally {
+      setSavingConfig(false);
+    }
+  }
 
   async function handleAddCategory(e: React.FormEvent) {
     e.preventDefault();
@@ -117,6 +146,8 @@ export default function AdminPanel() {
     setColors("");
     setSizes("");
     setImage("");
+    setExtraImages([]);
+    setNewExtraImage("");
     setVideo("");
     setCategory("");
     setTag("");
@@ -138,6 +169,8 @@ export default function AdminPanel() {
     setColors(p.colors.join(", "));
     setSizes(p.sizes.join(", "));
     setImage(p.image);
+    setExtraImages(p.images ?? []);
+    setNewExtraImage("");
     setVideo(p.video ?? "");
     setCategory(p.category ?? "");
     setTag((p.tag as any) ?? "");
@@ -146,6 +179,17 @@ export default function AdminPanel() {
     setStockMotivo("");
     setStockFirma("");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function addExtraImage() {
+    const url = newExtraImage.trim();
+    if (!url) return;
+    setExtraImages((prev) => [...prev, url]);
+    setNewExtraImage("");
+  }
+
+  function removeExtraImage(index: number) {
+    setExtraImages((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -189,6 +233,7 @@ export default function AdminPanel() {
         .map((s) => s.trim())
         .filter(Boolean),
       image: image.trim(),
+      images: extraImages.length > 0 ? extraImages : undefined,
       video: video.trim() || undefined,
       category: category || undefined,
       featured,
@@ -262,6 +307,41 @@ export default function AdminPanel() {
           {error}
         </div>
       )}
+
+      {/* --- Configuración del sitio --- */}
+      <section
+        style={{
+          background: "var(--cream-100)",
+          border: "1px solid var(--line)",
+          borderRadius: 20,
+          padding: 24,
+          marginBottom: 32,
+        }}
+      >
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--plum-950)", marginBottom: 14 }}>
+          Video principal de la home
+        </h2>
+        <p style={{ fontSize: 13, color: "rgba(36,19,34,0.6)", marginBottom: 14 }}>
+          El video grande que se ve arriba de todo, en el círculo del hero. Pegá el link directo a
+          un archivo <code>.mp4</code>. Si lo dejás vacío, se usa el video original del sitio.
+        </p>
+        <form onSubmit={handleSaveConfig} style={{ display: "flex", gap: 10 }}>
+          <input
+            style={{ ...inputStyle, flex: 1 }}
+            value={heroVideoUrl}
+            onChange={(e) => setHeroVideoUrl(e.target.value)}
+            placeholder="https://... (link directo a un .mp4)"
+          />
+          <button type="submit" disabled={savingConfig} style={primaryBtn}>
+            {savingConfig ? "Guardando..." : "Guardar"}
+          </button>
+        </form>
+        {configSaved && (
+          <p style={{ fontSize: 12, color: "var(--coral-500)", marginTop: 10, fontWeight: 600 }}>
+            ✓ Guardado. Puede tardar unos segundos en verse reflejado en la home.
+          </p>
+        )}
+      </section>
 
       {/* --- Categorías --- */}
       <section
@@ -511,6 +591,72 @@ export default function AdminPanel() {
               onChange={(e) => setImage(e.target.value)}
               placeholder="https://... (Imgur, Mercado Libre, Tienda Nube, etc.)"
             />
+          </div>
+        </div>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label style={labelStyle}>Fotos adicionales (opcional)</label>
+          <p style={{ fontSize: 12, color: "rgba(36,19,34,0.55)", marginTop: -2, marginBottom: 10 }}>
+            La foto de arriba es la principal (la que se ve en la card). Estas se suman como
+            galería en la página del producto.
+          </p>
+          {extraImages.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+              {extraImages.map((url, i) => (
+                <div key={i} style={{ position: "relative" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Foto adicional ${i + 1}`}
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "1px solid var(--line)",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeExtraImage(i)}
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      background: "#a3271e",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: 18,
+                      height: 18,
+                      fontSize: 11,
+                      lineHeight: 1,
+                      cursor: "pointer",
+                    }}
+                    title="Quitar"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              style={{ ...inputStyle, flex: 1 }}
+              value={newExtraImage}
+              onChange={(e) => setNewExtraImage(e.target.value)}
+              placeholder="https://... otra foto del producto"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addExtraImage();
+                }
+              }}
+            />
+            <button type="button" onClick={addExtraImage} style={secondaryBtn}>
+              Agregar foto
+            </button>
           </div>
         </div>
 

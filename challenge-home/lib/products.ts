@@ -57,6 +57,7 @@ export async function fetchProducts(): Promise<Product[]> {
       colors: data.colors ?? [],
       sizes: data.sizes ?? [],
       image: data.image ?? "",
+      images: Array.isArray(data.images) ? data.images : undefined,
       video: data.video ?? undefined,
       category: data.category ?? undefined,
       featured: data.featured ?? true,
