@@ -47,6 +47,7 @@ export async function fetchProducts(): Promise<Product[]> {
     return {
       id: d.id,
       slug: data.slug ?? slugify(data.name ?? ""),
+      sku: data.sku ?? undefined,
       name: data.name ?? "",
       description: data.description ?? "",
       price: data.price ?? 0,

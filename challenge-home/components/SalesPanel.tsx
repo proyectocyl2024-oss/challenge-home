@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchSales, createSale, deleteSale, type Sale, type PaymentMethod } from "@/lib/sales";
-import { fetchProducts, adjustProductStock } from "@/lib/products";
 import type { Product } from "@/data/products";
+import { fetchProducts, adjustProductStock } from "@/lib/products";
+import { fetchCategories, type Category } from "@/lib/categories";
+import { createSale, type PaymentMethod } from "@/lib/sales";
+import { downloadReceiptPdf } from "@/lib/receipt";
 
 const formatARS = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
@@ -12,42 +14,58 @@ const formatARS = (value: number) =>
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-const PAYMENT_LABELS: Record<PaymentMethod, string> = {
-  efectivo: "Efectivo",
-  transferencia: "Transferencia",
-  "mercado-pago": "Mercado Pago",
-  tarjeta: "Tarjeta",
-  otro: "Otro",
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "efectivo", label: "Efectivo" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "posnet", label: "Posnet" },
+];
+
+type CartLine = {
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+  maxStock: number;
 };
 
-type Filter = "hoy" | "semana" | "mes" | "todo";
-
 export default function SalesPanel() {
-  const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [filter, setFilter] = useState<Filter>("mes");
 
-  const [date, setDate] = useState(todayISO());
-  const [productName, setProductName] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState<string | undefined>(undefined);
-  const [quantity, setQuantity] = useState("1");
-  const [unitPrice, setUnitPrice] = useState("");
+  const [search, setSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("efectivo");
-  const [note, setNote] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [lastReceipt, setLastReceipt] = useState<{
+    date: string;
+    lines: CartLine[];
+    total: number;
+    paymentLabel: string;
+    customerName: string;
+    customerPhone: string;
+  } | null>(null);
+
+  // --- Modo manual: para vender algo que no está en el catálogo ---
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
+  const [manualQty, setManualQty] = useState("1");
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const [salesData, productsData] = await Promise.all([fetchSales(), fetchProducts()]);
-      setSales(salesData);
-      setProducts(productsData);
+      const [prods, cats] = await Promise.all([fetchProducts(), fetchCategories()]);
+      setProducts(prods);
+      setCategories(cats);
     } catch (e) {
       console.error(e);
-      setError("No se pudieron cargar las ventas. Revisá la configuración de Firebase.");
+      setError("No se pudo cargar el catálogo. Revisá la configuración de Firebase.");
     } finally {
       setLoading(false);
     }
@@ -57,318 +75,556 @@ export default function SalesPanel() {
     load();
   }, []);
 
-  function handleProductSelect(name: string) {
-    setProductName(name);
-    const match = products.find((p) => p.name === name);
-    if (match) {
-      setUnitPrice(String(match.price));
-      setSelectedProductId(match.id);
-    } else {
-      setSelectedProductId(undefined);
+  const filteredProducts = useMemo(() => {
+    let list = products;
+    if (activeCategory) list = list.filter((p) => p.category === activeCategory);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (p) => p.name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q)
+      );
     }
-  }
+    return list;
+  }, [products, activeCategory, search]);
 
-  function resetForm() {
-    setDate(todayISO());
-    setProductName("");
-    setSelectedProductId(undefined);
-    setQuantity("1");
-    setUnitPrice("");
-    setPaymentMethod("efectivo");
-    setNote("");
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const qty = Number(quantity) || 1;
-    const price = Number(unitPrice) || 0;
-    if (!productName.trim() || price <= 0) {
-      setError("Completá al menos producto y precio.");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await createSale({
-        date,
-        productId: selectedProductId,
-        productName: productName.trim(),
-        quantity: qty,
-        unitPrice: price,
-        total: qty * price,
-        paymentMethod,
-        note: note.trim() || undefined,
-      });
-      if (selectedProductId) {
-        await adjustProductStock(selectedProductId, -qty);
+  function addToCart(p: Product) {
+    if (p.stock <= 0) return;
+    setCart((prev) => {
+      const existing = prev.find((l) => l.productId === p.id);
+      if (existing) {
+        if (existing.quantity >= p.stock) return prev; // no superar el stock disponible
+        return prev.map((l) => (l.productId === p.id ? { ...l, quantity: l.quantity + 1 } : l));
       }
-      resetForm();
-      await load();
-    } catch (e) {
-      console.error(e);
-      setError("No se pudo guardar la venta.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm("¿Borrar esta venta? Si estaba vinculada a un producto del catálogo, se le repone el stock.")) return;
-    try {
-      const sale = sales.find((s) => s.id === id);
-      await deleteSale(id);
-      if (sale?.productId) {
-        await adjustProductStock(sale.productId, sale.quantity);
-      }
-      await load();
-    } catch (e) {
-      console.error(e);
-      setError("No se pudo borrar la venta.");
-    }
-  }
-
-  const filtered = useMemo(() => {
-    if (filter === "todo") return sales;
-    const now = new Date();
-    return sales.filter((s) => {
-      const d = new Date(s.date + "T00:00:00");
-      if (filter === "hoy") {
-        return s.date === todayISO();
-      }
-      if (filter === "semana") {
-        const diffDays = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-        return diffDays >= 0 && diffDays < 7;
-      }
-      if (filter === "mes") {
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      }
-      return true;
+      return [...prev, { productId: p.id, name: p.name, price: p.price, quantity: 1, maxStock: p.stock }];
     });
-  }, [sales, filter]);
+  }
 
-  const total = filtered.reduce((sum, s) => sum + s.total, 0);
+  function changeQty(productId: string, delta: number) {
+    setCart((prev) =>
+      prev
+        .map((l) =>
+          l.productId === productId
+            ? { ...l, quantity: Math.max(0, Math.min(l.maxStock, l.quantity + delta)) }
+            : l
+        )
+        .filter((l) => l.quantity > 0)
+    );
+  }
+
+  function removeLine(productId: string) {
+    setCart((prev) => prev.filter((l) => l.productId !== productId));
+  }
+
+  function addManualToCart() {
+    const price = Number(manualPrice) || 0;
+    const qty = Number(manualQty) || 1;
+    if (!manualName.trim() || price <= 0) return;
+    setCart((prev) => [
+      ...prev,
+      {
+        productId: `manual-${Date.now()}`,
+        name: manualName.trim(),
+        price,
+        quantity: qty,
+        maxStock: Infinity,
+      },
+    ]);
+    setManualName("");
+    setManualPrice("");
+    setManualQty("1");
+    setManualOpen(false);
+  }
+
+  const subtotal = cart.reduce((sum, l) => sum + l.price * l.quantity, 0);
+
+  async function handleConfirm() {
+    if (cart.length === 0) return;
+    setConfirming(true);
+    setError(null);
+    const date = todayISO();
+    try {
+      for (const line of cart) {
+        const isManual = line.productId.startsWith("manual-");
+        await createSale({
+          date,
+          productId: isManual ? undefined : line.productId,
+          productName: line.name,
+          quantity: line.quantity,
+          unitPrice: line.price,
+          total: line.price * line.quantity,
+          paymentMethod,
+        });
+        if (!isManual) {
+          await adjustProductStock(line.productId, -line.quantity);
+        }
+      }
+      setLastReceipt({
+        date,
+        lines: cart,
+        total: subtotal,
+        paymentLabel: PAYMENT_OPTIONS.find((o) => o.value === paymentMethod)?.label ?? paymentMethod,
+        customerName,
+        customerPhone,
+      });
+      setCart([]);
+      setPaymentMethod("efectivo");
+      setCustomerName("");
+      setCustomerPhone("");
+      await load();
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo confirmar la venta. Revisá la consola para más detalle.");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  function handleDownloadPdf() {
+    if (!lastReceipt) return;
+    downloadReceiptPdf({
+      date: lastReceipt.date,
+      lines: lastReceipt.lines.map((l) => ({
+        name: l.name,
+        quantity: l.quantity,
+        unitPrice: l.price,
+        total: l.price * l.quantity,
+      })),
+      total: lastReceipt.total,
+      paymentMethod: lastReceipt.paymentLabel,
+      customerName: lastReceipt.customerName || undefined,
+    });
+  }
+
+  function handleSendWhatsApp() {
+    if (!lastReceipt) return;
+    handleDownloadPdf();
+    const message = `¡Hola${lastReceipt.customerName ? " " + lastReceipt.customerName : ""}! Te paso el comprobante de tu compra en CHALLENGE por ${formatARS(
+      lastReceipt.total
+    )}. Te adjunto el PDF con el detalle.`;
+    const phone = lastReceipt.customerPhone.replace(/[^0-9]/g, "");
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+      : `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, "_blank");
+  }
+
+  if (loading) {
+    return <div style={{ padding: 40, textAlign: "center" }}>Cargando...</div>;
+  }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px 24px", fontFamily: "var(--font-body)" }}>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 30, color: "var(--plum-950)" }}>
-        Registro de ventas — CHALLENGE
-      </h1>
-      <p style={{ color: "rgba(36,19,34,0.6)", fontSize: 13, marginBottom: 28 }}>
-        Registro interno para llevar la cuenta de lo vendido. No genera factura oficial de AFIP.
-      </p>
-
-      {error && (
-        <div
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "var(--font-body)" }}>
+      {/* --- Columna izquierda: catálogo --- */}
+      <div style={{ flex: 1, padding: "28px 24px", overflowY: "auto" }}>
+        <h1
           style={{
-            background: "#fdeceb",
-            color: "#a3271e",
-            padding: "12px 16px",
-            borderRadius: 10,
-            marginBottom: 20,
-            fontSize: 14,
+            fontFamily: "var(--font-display)",
+            fontSize: 26,
+            color: "var(--plum-950)",
+            marginBottom: 18,
           }}
         >
-          {error}
-        </div>
-      )}
+          Ventas — CHALLENGE
+        </h1>
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          background: "var(--cream-100)",
-          border: "1px solid var(--line)",
-          borderRadius: 20,
-          padding: 24,
-          marginBottom: 32,
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-        }}
-      >
-        <div>
-          <label style={labelStyle}>Fecha</label>
-          <input style={inputStyle} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-
-        <div>
-          <label style={labelStyle}>Medio de pago</label>
-          <select
-            style={inputStyle}
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+        {error && (
+          <div
+            style={{
+              background: "#fdeceb",
+              color: "#a3271e",
+              padding: "12px 16px",
+              borderRadius: 10,
+              marginBottom: 16,
+              fontSize: 14,
+            }}
           >
-            {Object.entries(PAYMENT_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
+            {error}
+          </div>
+        )}
 
-        <div style={{ gridColumn: "1 / -1" }}>
-          <label style={labelStyle}>Producto</label>
-          <input
-            style={inputStyle}
-            list="productos-lista"
-            value={productName}
-            onChange={(e) => handleProductSelect(e.target.value)}
-            placeholder="Elegí del catálogo o escribí uno nuevo"
-          />
-          <datalist id="productos-lista">
-            {products.map((p) => (
-              <option key={p.id} value={p.name} />
-            ))}
-          </datalist>
-          {selectedProductId ? (
-            <p style={{ fontSize: 12, color: "rgba(36,19,34,0.55)", marginTop: 6 }}>
-              Vinculado al catálogo — al guardar, se descuenta el stock de este producto en la página.
-            </p>
-          ) : productName.trim() ? (
-            <p style={{ fontSize: 12, color: "rgba(36,19,34,0.4)", marginTop: 6 }}>
-              No coincide con ningún producto del catálogo — se registra la venta sin tocar stock.
-            </p>
-          ) : null}
-        </div>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar producto o SKU..."
+          style={{
+            width: "100%",
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid var(--line)",
+            fontSize: 14,
+            marginBottom: 14,
+            background: "#fff",
+          }}
+        />
 
-        <div>
-          <label style={labelStyle}>Cantidad</label>
-          <input
-            style={inputStyle}
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label style={labelStyle}>Precio unitario (ARS)</label>
-          <input
-            style={inputStyle}
-            type="number"
-            value={unitPrice}
-            onChange={(e) => setUnitPrice(e.target.value)}
-          />
-        </div>
-
-        <div style={{ gridColumn: "1 / -1" }}>
-          <label style={labelStyle}>Nota (opcional)</label>
-          <input style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Cliente, talle, lo que quieras anotar" />
-        </div>
-
-        <div style={{ gridColumn: "1 / -1", fontSize: 14, color: "rgba(36,19,34,0.7)" }}>
-          Total: <strong>{formatARS((Number(quantity) || 0) * (Number(unitPrice) || 0))}</strong>
-        </div>
-
-        <div style={{ gridColumn: "1 / -1" }}>
-          <button type="submit" disabled={saving} style={primaryBtn}>
-            {saving ? "Guardando..." : "Registrar venta"}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+          <button
+            onClick={() => setActiveCategory(null)}
+            style={pillStyle(activeCategory === null)}
+          >
+            Todos
           </button>
-        </div>
-      </form>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          {(["hoy", "semana", "mes", "todo"] as Filter[]).map((f) => (
+          {categories.map((c) => (
             <button
-              key={f}
-              onClick={() => setFilter(f)}
-              style={{
-                ...secondaryBtn,
-                background: filter === f ? "var(--plum-800)" : "transparent",
-                color: filter === f ? "#fff" : "var(--plum-800)",
-              }}
+              key={c.id}
+              onClick={() => setActiveCategory(c.slug)}
+              style={pillStyle(activeCategory === c.slug)}
             >
-              {f === "hoy" ? "Hoy" : f === "semana" ? "7 días" : f === "mes" ? "Este mes" : "Todo"}
+              {c.name}
             </button>
           ))}
         </div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--plum-950)" }}>
-          Total: {formatARS(total)}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+            gap: 14,
+          }}
+        >
+          {filteredProducts.map((p) => {
+            const outOfStock = p.stock <= 0;
+            return (
+              <button
+                key={p.id}
+                onClick={() => addToCart(p)}
+                disabled={outOfStock}
+                style={{
+                  textAlign: "left",
+                  border: "1px solid var(--line)",
+                  borderRadius: 16,
+                  padding: 10,
+                  background: "#fff",
+                  cursor: outOfStock ? "not-allowed" : "pointer",
+                  opacity: outOfStock ? 0.5 : 1,
+                  position: "relative",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    background: outOfStock ? "#a3271e" : "var(--plum-800)",
+                    color: "#fff",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                  }}
+                >
+                  {outOfStock ? "0" : p.stock}
+                </div>
+                <div
+                  style={{
+                    width: "100%",
+                    aspectRatio: "1 / 1",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    background: "var(--cream-100)",
+                    marginBottom: 8,
+                  }}
+                >
+                  {p.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  )}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-950)", marginBottom: 4 }}>
+                  {p.name}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{formatARS(p.price)}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {filteredProducts.length === 0 && (
+          <p style={{ color: "rgba(36,19,34,0.5)", marginTop: 20 }}>No hay productos que coincidan.</p>
+        )}
+
+        <div style={{ marginTop: 28 }}>
+          <button
+            onClick={() => setManualOpen((v) => !v)}
+            style={{
+              background: "transparent",
+              border: "1px dashed var(--plum-800)",
+              color: "var(--plum-800)",
+              borderRadius: 12,
+              padding: "10px 16px",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {manualOpen ? "Cancelar" : "+ Vender algo que no está en el catálogo"}
+          </button>
+
+          {manualOpen && (
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: "2fr 1fr 1fr auto",
+                gap: 10,
+                alignItems: "end",
+                background: "var(--cream-100)",
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                padding: 14,
+              }}
+            >
+              <div>
+                <label style={smallLabel}>Descripción</label>
+                <input style={smallInput} value={manualName} onChange={(e) => setManualName(e.target.value)} />
+              </div>
+              <div>
+                <label style={smallLabel}>Precio</label>
+                <input
+                  style={smallInput}
+                  type="number"
+                  value={manualPrice}
+                  onChange={(e) => setManualPrice(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={smallLabel}>Cant.</label>
+                <input
+                  style={smallInput}
+                  type="number"
+                  min="1"
+                  value={manualQty}
+                  onChange={(e) => setManualQty(e.target.value)}
+                />
+              </div>
+              <button
+                onClick={addManualToCart}
+                style={{
+                  background: "var(--coral-500)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "10px 16px",
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
+              >
+                Agregar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {loading ? (
-        <p>Cargando...</p>
-      ) : filtered.length === 0 ? (
-        <p style={{ color: "rgba(36,19,34,0.5)" }}>No hay ventas registradas en este período.</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filtered.map((s) => (
-            <div
-              key={s.id}
+      {/* --- Columna derecha: carrito --- */}
+      <div
+        style={{
+          width: 340,
+          borderLeft: "1px solid var(--line)",
+          background: "var(--cream-50)",
+          padding: "28px 20px",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--plum-950)", marginBottom: 16 }}>
+          Carrito {cart.length > 0 && `(${cart.length})`}
+        </h2>
+
+        {cart.length === 0 ? (
+          <p style={{ color: "rgba(36,19,34,0.5)", fontSize: 14 }}>Tocá un producto para agregarlo.</p>
+        ) : (
+          <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
+            {cart.map((l) => (
+              <div
+                key={l.productId}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 0",
+                  borderBottom: "1px solid var(--line)",
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{l.name}</div>
+                  <div style={{ fontSize: 12, color: "rgba(36,19,34,0.5)" }}>{formatARS(l.price)} c/u</div>
+                </div>
+                <button onClick={() => changeQty(l.productId, -1)} style={qtyBtn}>
+                  −
+                </button>
+                <span style={{ fontSize: 13, width: 20, textAlign: "center" }}>{l.quantity}</span>
+                <button onClick={() => changeQty(l.productId, 1)} style={qtyBtn} disabled={l.quantity >= l.maxStock}>
+                  +
+                </button>
+                <button
+                  onClick={() => removeLine(l.productId)}
+                  style={{ background: "none", border: "none", color: "#a3271e", fontSize: 16, cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 20, fontWeight: 700, marginBottom: 16 }}>
+          <span>Total</span>
+          <span>{formatARS(subtotal)}</span>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={smallLabel}>Cliente (opcional, para el comprobante)</label>
+          <input
+            style={{ ...smallInput, marginBottom: 8 }}
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="Nombre"
+          />
+          <input
+            style={smallInput}
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            placeholder="WhatsApp (ej: 5491122334455)"
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={smallLabel}>Forma de pago</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+            {PAYMENT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setPaymentMethod(opt.value)}
+                style={pillStyle(paymentMethod === opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={handleConfirm}
+          disabled={cart.length === 0 || confirming}
+          style={{
+            background: cart.length === 0 ? "rgba(36,19,34,0.2)" : "var(--coral-500)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 999,
+            padding: "14px 20px",
+            fontWeight: 700,
+            fontSize: 15,
+            cursor: cart.length === 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          {confirming ? "Confirmando..." : "Confirmar venta"}
+        </button>
+
+        {cart.length > 0 && (
+          <button
+            onClick={() => setCart([])}
+            style={{
+              background: "none",
+              border: "none",
+              color: "rgba(36,19,34,0.5)",
+              fontSize: 12,
+              marginTop: 10,
+              textDecoration: "underline",
+            }}
+          >
+            Limpiar carrito
+          </button>
+        )}
+
+        {lastReceipt && (
+          <div
+            style={{
+              marginTop: 20,
+              background: "#fff",
+              border: "1px solid var(--line)",
+              borderRadius: 14,
+              padding: 16,
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "var(--plum-950)", marginBottom: 4 }}>
+              ✓ Venta confirmada
+            </div>
+            <div style={{ fontSize: 13, color: "rgba(36,19,34,0.6)", marginBottom: 12 }}>
+              Total: {formatARS(lastReceipt.total)}
+            </div>
+            <button
+              onClick={handleDownloadPdf}
+              style={{ ...pillStyle(false), width: "100%", marginBottom: 8, padding: "10px 14px" }}
+            >
+              Descargar comprobante (PDF)
+            </button>
+            <button
+              onClick={handleSendWhatsApp}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                border: "1px solid var(--line)",
-                borderRadius: 12,
+                width: "100%",
+                background: "#25D366",
+                color: "#fff",
+                border: "none",
+                borderRadius: 999,
                 padding: "10px 14px",
-                background: "#fff",
+                fontWeight: 600,
                 fontSize: 13,
               }}
             >
-              <div style={{ width: 90, color: "rgba(36,19,34,0.5)" }}>{s.date}</div>
-              <div style={{ flex: 1 }}>
-                <strong>{s.productName}</strong> · {s.quantity} u. × {formatARS(s.unitPrice)}
-                {s.note && <div style={{ color: "rgba(36,19,34,0.5)" }}>{s.note}</div>}
-              </div>
-              <div style={{ width: 100, color: "rgba(36,19,34,0.6)" }}>
-                {PAYMENT_LABELS[s.paymentMethod]}
-              </div>
-              <div style={{ width: 90, fontWeight: 600, textAlign: "right" }}>{formatARS(s.total)}</div>
-              <button onClick={() => handleDelete(s.id)} style={{ ...dangerBtn, padding: "6px 12px" }}>
-                Borrar
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+              Enviar por WhatsApp
+            </button>
+            <p style={{ fontSize: 11, color: "rgba(36,19,34,0.5)", marginTop: 10 }}>
+              El botón de WhatsApp descarga el PDF y abre el chat con un mensaje listo — adjuntá el
+              archivo descargado manualmente ahí (clip → elegir archivo).
+            </p>
+            <button
+              onClick={() => setLastReceipt(null)}
+              style={{ background: "none", border: "none", color: "rgba(36,19,34,0.4)", fontSize: 11, marginTop: 8 }}
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-const labelStyle: React.CSSProperties = {
+function pillStyle(active: boolean): React.CSSProperties {
+  return {
+    border: "1px solid var(--plum-800)",
+    borderRadius: 999,
+    padding: "7px 14px",
+    fontSize: 12,
+    fontWeight: 600,
+    background: active ? "var(--plum-800)" : "transparent",
+    color: active ? "#fff" : "var(--plum-800)",
+  };
+}
+
+const qtyBtn: React.CSSProperties = {
+  width: 22,
+  height: 22,
+  borderRadius: "50%",
+  border: "1px solid var(--line)",
+  background: "#fff",
+  fontSize: 13,
+  cursor: "pointer",
+};
+
+const smallLabel: React.CSSProperties = {
   display: "block",
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
   color: "var(--plum-800)",
-  marginBottom: 6,
+  marginBottom: 4,
 };
 
-const inputStyle: React.CSSProperties = {
+const smallInput: React.CSSProperties = {
   width: "100%",
-  padding: "10px 12px",
-  borderRadius: 10,
+  padding: "8px 10px",
+  borderRadius: 8,
   border: "1px solid var(--line)",
-  fontSize: 14,
-  fontFamily: "var(--font-body)",
-  background: "#fff",
-};
-
-const primaryBtn: React.CSSProperties = {
-  background: "var(--coral-500)",
-  color: "#fff",
-  border: "none",
-  borderRadius: 999,
-  padding: "10px 22px",
-  fontWeight: 600,
-  fontSize: 14,
-};
-
-const secondaryBtn: React.CSSProperties = {
-  border: "1px solid var(--plum-800)",
-  borderRadius: 999,
-  padding: "7px 16px",
-  fontWeight: 600,
   fontSize: 13,
-};
-
-const dangerBtn: React.CSSProperties = {
-  background: "transparent",
-  color: "#a3271e",
-  border: "1px solid #a3271e",
-  borderRadius: 999,
-  fontWeight: 600,
-  fontSize: 12,
+  background: "#fff",
 };

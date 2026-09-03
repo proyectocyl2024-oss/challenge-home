@@ -96,23 +96,63 @@ incluso para uso gratuito.
 con lectura y escritura abiertas (necesario para que la home funcione sin
 más configuración), y todo lo demás en la base bloqueado por defecto.
 
-## Registro de ventas (`/ventas`)
+## Punto de venta (`/ventas`)
 
 Página escondida — no aparece en ningún menú del sitio, solo accesible si
 sabés la URL directa. Protegida con el mismo PIN que `/admin`.
 
-Sirve para anotar cada venta a mano: fecha, producto (podés elegir uno ya
-cargado en el catálogo o escribir uno nuevo), cantidad, precio, medio de
-pago y una nota libre. **No genera factura oficial de AFIP** — es solo un
-registro interno.
+Funciona como un punto de venta, no como un formulario:
+
+- **Buscador** (por nombre o SKU) y **filtro por categoría** arriba del
+  catálogo.
+- **Grid de productos** con foto, precio y una etiqueta con el stock
+  disponible en la esquina — tocás un producto y se agrega al carrito. Si
+  no queda stock, la card se ve apagada y no se puede tocar.
+- **Carrito** a la derecha: cada línea con cantidad ajustable (+/−, tope en
+  el stock disponible), botón para quitar, y el total general.
+- **Forma de pago**: Efectivo, Transferencia, Mercado Pago, Tarjeta o
+  Mixto.
+- **"Vender algo que no está en el catálogo"**: un modo manual desplegable
+  para cargar algo puntual (descripción, precio, cantidad) que no vale la
+  pena tener como producto permanente — no descuenta stock de nada, porque
+  no está vinculado a ningún producto.
+- **Confirmar venta**: guarda una venta por cada línea del carrito (misma
+  fecha y forma de pago para todas), descuenta el stock correspondiente, y
+  vacía el carrito.
+
+**No genera factura oficial de AFIP** — es un registro interno.
 
 ### Stock sincronizado con el catálogo
 
-Cuando elegís un producto que ya está cargado en `/admin`, al registrar la
-venta se descuenta automáticamente esa cantidad del stock — el mismo
-número que se muestra en la página pública. Si borrás esa venta después,
-el stock se repone. La resta/suma de stock usa una transacción de
-Firestore, así que dos ventas casi simultáneas no se pisan entre sí.
+Cada línea del carrito que corresponde a un producto del catálogo descuenta
+automáticamente esa cantidad del stock al confirmar la venta — el mismo
+número que se muestra en la página pública. La resta usa una transacción de
+Firestore, así que dos ventas casi simultáneas no se pisan entre sí. Las
+líneas del modo manual no tocan stock de ningún producto.
+
+### Comprobante en PDF (no es factura oficial)
+
+Al confirmar una venta, aparece un panel con dos botones:
+
+- **Descargar comprobante (PDF)**: genera y descarga un PDF con diseño de
+  marca (ciruela/coral, logo "CHALLENGE"), la dirección
+  (Amenábar 1024, Colegiales, CABA), el WhatsApp de contacto, el detalle de
+  productos/cantidades/precios, el total, la forma de pago, y un cartel
+  bien visible que dice **"Este comprobante es un resumen interno y NO es
+  una factura oficial de AFIP."**
+- **Enviar por WhatsApp**: descarga el mismo PDF y abre WhatsApp con un
+  mensaje ya escrito, listo para elegir el contacto del cliente (o
+  directo a su número, si lo cargaste en el campo "Cliente" antes de
+  confirmar la venta).
+
+**Importante — esto no es 100% automático:** no existe una forma de que un
+sitio web adjunte un archivo directamente dentro de un mensaje de WhatsApp
+sin usar la API oficial de WhatsApp Business (que es un servicio pago
+aparte, con más infraestructura). El botón hace lo más cercano posible: te
+deja el PDF ya descargado y el chat ya abierto — solo falta que vos
+adjuntes el archivo a mano (clip → elegir archivo descargado). Si en algún
+momento querés que sea 100% automático, avisame y evaluamos sumar la API
+de WhatsApp Business.
 
 ## Contabilidad (`/contabilidad`)
 
@@ -120,7 +160,7 @@ Otra página escondida, con el mismo PIN. Agrupa lo cargado en `/ventas` en:
 
 - Total vendido y unidades vendidas del período elegido
 - Total por producto (unidades y monto)
-- Total por medio de pago
+- Total por medio de pago (incluye Mixto)
 
 Con filtros rápidos (Hoy / 7 días / Este mes / Todo).
 
@@ -145,6 +185,14 @@ reseñas reales en Google Maps.
 - Migrar el checkout de WhatsApp a Mercado Pago Checkout Pro.
 - Botón de arrepentimiento y defensa del consumidor en el footer (requisito
   legal AR).
+- Historial de ventas con borrado individual en `/ventas`: con el rediseño
+  tipo punto de venta, se perdió la lista de ventas ya cargadas que tenía
+  la versión anterior (con botón de borrar y reposición automática de
+  stock). Hoy, si te equivocás cargando una venta, no hay forma de
+  corregirla desde la interfaz — habría que ajustarlo a mano en Firestore
+  Console (colección `challenge_ventas`, y `challenge_productos` si hace
+  falta corregir el stock también). Avisame si querés que le sume esa
+  vista de vuelta.
 
 ## Paleta
 

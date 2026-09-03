@@ -12,7 +12,7 @@ import { getDb } from "./firebase";
 
 const COLLECTION = "challenge_ventas";
 
-export type PaymentMethod = "efectivo" | "transferencia" | "mercado-pago" | "tarjeta" | "otro";
+export type PaymentMethod = "efectivo" | "transferencia" | "posnet";
 
 export type Sale = {
   id: string;
@@ -50,7 +50,7 @@ export async function fetchSales(): Promise<Sale[]> {
       quantity: data.quantity ?? 1,
       unitPrice: data.unitPrice ?? 0,
       total: data.total ?? 0,
-      paymentMethod: data.paymentMethod ?? "otro",
+      paymentMethod: data.paymentMethod ?? "efectivo",
       note: data.note ?? undefined,
     } as Sale;
   });

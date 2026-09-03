@@ -13,9 +13,7 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
-  "mercado-pago": "Mercado Pago",
-  tarjeta: "Tarjeta",
-  otro: "Otro",
+  posnet: "Posnet",
 };
 
 type Filter = "hoy" | "semana" | "mes" | "todo";

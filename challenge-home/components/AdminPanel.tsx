@@ -36,6 +36,7 @@ export default function AdminPanel() {
 
   // --- Form de producto ---
   const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [compareAtPrice, setCompareAtPrice] = useState("");
@@ -104,6 +105,7 @@ export default function AdminPanel() {
   function resetForm() {
     setEditingId(null);
     setName("");
+    setSku("");
     setDescription("");
     setPrice("");
     setCompareAtPrice("");
@@ -123,6 +125,7 @@ export default function AdminPanel() {
   function loadIntoForm(p: Product) {
     setEditingId(p.id);
     setName(p.name);
+    setSku(p.sku ?? "");
     setDescription(p.description);
     setPrice(String(p.price));
     setCompareAtPrice(p.compareAtPrice ? String(p.compareAtPrice) : "");
@@ -166,6 +169,7 @@ export default function AdminPanel() {
 
     const payload: ProductInput = {
       name: name.trim(),
+      sku: sku.trim() || undefined,
       description: description.trim(),
       price: priceNum,
       compareAtPrice: compareNum,
@@ -337,9 +341,14 @@ export default function AdminPanel() {
           {editingId ? "Editar producto" : "Nuevo producto"}
         </h2>
 
-        <div style={{ gridColumn: "1 / -1" }}>
+        <div>
           <label style={labelStyle}>Nombre</label>
           <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
+
+        <div>
+          <label style={labelStyle}>SKU / código interno (opcional)</label>
+          <input style={inputStyle} value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Ej: CHL-SET-ROMA-001" />
         </div>
 
         <div style={{ gridColumn: "1 / -1" }}>
@@ -578,6 +587,7 @@ export default function AdminPanel() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600 }}>{p.name}</div>
                 <div style={{ fontSize: 13, color: "rgba(36,19,34,0.6)" }}>
+                  {p.sku && <>SKU {p.sku} · </>}
                   {formatARS(p.price)} · stock {p.stock} · {categoryName(p.category)}
                 </div>
               </div>
