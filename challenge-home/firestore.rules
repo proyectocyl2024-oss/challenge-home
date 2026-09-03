@@ -18,6 +18,22 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Registro interno de ventas: no está en ningún menú del sitio, pero
+    // igual que el resto, no tiene protección a nivel de reglas (el PIN
+    // protege la pantalla, no la base en sí).
+    match /challenge_ventas/{saleId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Auditoría de cambios manuales de stock (motivo + firma), generada
+    // automáticamente desde /admin. No se edita ni se borra, solo se crea.
+    match /challenge_stock_log/{logId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
     // Todo lo demás en esta base queda bloqueado por las dudas.
     match /{document=**} {
       allow read, write: if false;

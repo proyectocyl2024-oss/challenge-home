@@ -15,6 +15,7 @@ import {
   deleteCategory,
   type Category,
 } from "@/lib/categories";
+import { logStockChange } from "@/lib/stockLog";
 
 const formatARS = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
@@ -46,6 +47,11 @@ export default function AdminPanel() {
   const [video, setVideo] = useState("");
   const [category, setCategory] = useState("");
   const [tag, setTag] = useState<"" | "nuevo" | "ultimas-unidades" | "sin-stock">("");
+
+  // --- Auditoría de cambios de stock (solo al editar un producto existente) ---
+  const [originalStock, setOriginalStock] = useState<number | null>(null);
+  const [stockMotivo, setStockMotivo] = useState("");
+  const [stockFirma, setStockFirma] = useState("");
 
   async function load() {
     setLoading(true);
@@ -109,6 +115,9 @@ export default function AdminPanel() {
     setVideo("");
     setCategory("");
     setTag("");
+    setOriginalStock(null);
+    setStockMotivo("");
+    setStockFirma("");
   }
 
   function loadIntoForm(p: Product) {
@@ -125,6 +134,9 @@ export default function AdminPanel() {
     setVideo(p.video ?? "");
     setCategory(p.category ?? "");
     setTag((p.tag as any) ?? "");
+    setOriginalStock(p.stock);
+    setStockMotivo("");
+    setStockFirma("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -134,6 +146,17 @@ export default function AdminPanel() {
       setError("Nombre y precio son obligatorios.");
       return;
     }
+
+    const newStockNum = Number(stock) || 0;
+    const stockChanged = editingId !== null && originalStock !== null && newStockNum !== originalStock;
+
+    if (stockChanged && (!stockMotivo.trim() || !stockFirma.trim())) {
+      setError(
+        "Cambiaste el stock: tenés que completar el motivo y la firma (nombre de quien lo cambia) antes de guardar. Sin excepción."
+      );
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -147,7 +170,7 @@ export default function AdminPanel() {
       price: priceNum,
       compareAtPrice: compareNum,
       installments: { count: installmentsCountNum, amount: priceNum / installmentsCountNum },
-      stock: Number(stock) || 0,
+      stock: newStockNum,
       colors: colors
         .split(",")
         .map((c) => c.trim())
@@ -165,6 +188,16 @@ export default function AdminPanel() {
     try {
       if (editingId) {
         await updateProduct(editingId, payload);
+        if (stockChanged) {
+          await logStockChange({
+            productId: editingId,
+            productName: name.trim(),
+            previousStock: originalStock as number,
+            newStock: newStockNum,
+            motivo: stockMotivo.trim(),
+            firma: stockFirma.trim(),
+          });
+        }
       } else {
         await createProduct(payload);
       }
@@ -200,9 +233,7 @@ export default function AdminPanel() {
         Panel de productos — CHALLENGE
       </h1>
       <p style={{ color: "rgba(36,19,34,0.6)", fontSize: 14, marginBottom: 32 }}>
-        Cualquiera con este link puede cargar y editar el catálogo — no tiene login. Para un
-        catálogo de productos sin datos sensibles está bien así; si en algún momento necesitás
-        restringir el acceso, avisame.
+        Cargá y editá el catálogo acá.
       </p>
 
       {error && (
@@ -377,6 +408,44 @@ export default function AdminPanel() {
           <label style={labelStyle}>Stock</label>
           <input style={inputStyle} type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
         </div>
+
+        {editingId && originalStock !== null && Number(stock) !== originalStock && (
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              border: "2px solid var(--coral-500)",
+              borderRadius: 14,
+              padding: 16,
+              background: "#fff",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <div style={{ gridColumn: "1 / -1", fontSize: 13, fontWeight: 600, color: "var(--coral-500)" }}>
+              Cambiaste el stock de {originalStock} a {Number(stock) || 0}. Completá esto antes de guardar
+              — sin excepción:
+            </div>
+            <div>
+              <label style={labelStyle}>Motivo del cambio</label>
+              <input
+                style={inputStyle}
+                value={stockMotivo}
+                onChange={(e) => setStockMotivo(e.target.value)}
+                placeholder="Ej: venta en el local, producto dañado, conteo físico..."
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Firma (nombre de quien lo cambia)</label>
+              <input
+                style={inputStyle}
+                value={stockFirma}
+                onChange={(e) => setStockFirma(e.target.value)}
+                placeholder="Tu nombre"
+              />
+            </div>
+          </div>
+        )}
 
         <div>
           <label style={labelStyle}>Colores (separados por coma)</label>

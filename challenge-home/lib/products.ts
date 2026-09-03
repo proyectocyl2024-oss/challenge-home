@@ -8,6 +8,7 @@ import {
   serverTimestamp,
   orderBy,
   query,
+  runTransaction,
 } from "firebase/firestore";
 import { getDb } from "./firebase";
 import type { Product } from "@/data/products";
@@ -93,4 +94,20 @@ export async function updateProduct(id: string, input: Partial<ProductInput>) {
 export async function deleteProduct(id: string) {
   const db = getDb();
   return deleteDoc(doc(db, COLLECTION, id));
+}
+
+// Suma o resta stock de forma segura (transacción: lee el valor actual y lo
+// actualiza en un solo paso, para que dos ventas registradas casi al mismo
+// tiempo no se pisen entre sí). delta negativo = descuenta, positivo = repone.
+// Nunca deja el stock por debajo de 0.
+export async function adjustProductStock(id: string, delta: number): Promise<void> {
+  const db = getDb();
+  const ref = doc(db, COLLECTION, id);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const current = (snap.data().stock as number) ?? 0;
+    const next = Math.max(0, current + delta);
+    tx.update(ref, { stock: next, updatedAt: serverTimestamp() });
+  });
 }

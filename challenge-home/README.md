@@ -1,154 +1,150 @@
-# CHALLENGE — Home + Carrito (scaffold)
+# CHALLENGE — Home + Carrito + Admin (scaffold)
 
-Home tipo tienda (inspirada en la estructura de challengearg.com) con la identidad
-editorial de CHALLENGE: fondo crema, ciruela profundo, coral, cards de producto
-circulares, tipografía Fraunces (display) + Work Sans (body).
+Home tipo tienda con la identidad editorial de CHALLENGE: fondo crema, ciruela
+profundo, coral, cards de producto circulares, tipografía Fraunces (display) +
+Work Sans (body). Incluye panel de administración, registro de ventas y
+contabilidad.
 
 ## Qué incluye
 
-- `app/page.tsx` — Home: hero + grid de destacados
-- `app/layout.tsx` — layout raíz + fuentes
-- `app/globals.css` — tokens de diseño (colores, tipografía, componentes)
-- `components/Header.tsx` — header con nav y botón de carrito
-- `components/ProductCard.tsx` — card circular con precio, descuento, cuotas, stock
-- `components/FeaturedGrid.tsx` — grilla de sección
-- `components/CartDrawer.tsx` — carrito lateral (drawer) con cantidades y subtotal
-- `store/cartStore.ts` — estado global del carrito con Zustand (persistido en localStorage)
-- `data/products.ts` — 6 productos de ejemplo (reemplazar por datos reales)
+- `app/page.tsx` — Home: hero con video en loop + grid de destacados + ubicación
+- `app/productos/[slug]/page.tsx` — Página de detalle de cada producto
+- `app/admin/page.tsx` — Panel para cargar productos y categorías (con PIN)
+- `app/ventas/page.tsx` — Registro de ventas, escondido (con PIN)
+- `app/contabilidad/page.tsx` — Totales por producto y medio de pago (con PIN)
+- `lib/firebase.ts`, `lib/products.ts`, `lib/categories.ts`, `lib/sales.ts` —
+  conexión y funciones contra Firestore (proyecto `paginachallengearg`)
+- `store/cartStore.ts` — carrito con Zustand, persistido en localStorage
+- `netlify.toml` (en la raíz del repo, fuera de esta carpeta) — para que
+  cualquier cuenta de Netlify detecte sola la configuración de build
 
-## Cómo integrarlo a tu proyecto Next.js existente
+## Cómo desplegar (GitHub + Netlify)
 
-1. Copiá las carpetas `app/`, `components/`, `store/`, `data/` dentro de tu proyecto
-   (mergeando con lo que ya tengas — no pisar tu `layout.tsx` si ya tiene lógica de
-   Firebase Auth; agregarle el `<CartDrawer />` y los imports de fuente ahí).
-2. Instalá zustand si todavía no lo tenés: `npm install zustand`.
-3. Reemplazá `data/products.ts` por tu fuente real. Como charlamos, para arrancar
-   son productos "a mano"; el siguiente paso natural es traerlos desde Firestore
-   (la misma colección `facturapp_productos` que ya usás para stock).
-4. Las imágenes están referenciadas en `/products/*.jpg` — poné esos archivos en
-   `public/products/` o cambiá las rutas por URLs de Firebase Storage / CDN.
+1. Subí el contenido de esta carpeta a un repositorio de GitHub.
+2. Asegurate de que exista un `netlify.toml` en la **raíz del repositorio**
+   (no adentro de esta carpeta) con este contenido:
+
+   ```toml
+   [build]
+     base = "challenge-home"
+     command = "npm run build"
+     publish = ".next"
+
+   [[plugins]]
+     package = "@netlify/plugin-nextjs"
+   ```
+
+   (Ajustá `base` al nombre real de la carpeta si la subiste con otro nombre.)
+3. En Netlify: "Add new site" → "Import an existing project" → GitHub →
+   elegís el repo → "Deploy". No hace falta tocar nada más a mano, Netlify lee
+   el `netlify.toml` solo.
+4. Publicá `firestore.rules` en Firebase Console → Firestore Database →
+   pestaña Reglas → pegar y Publicar.
 
 ## Panel de administración (`/admin`)
 
-Alta, edición y borrado de productos y categorías contra dos colecciones en
-Firestore, dentro de tu proyecto Firebase propio de CHALLENGE
-(`paginachallengearg`) — separado de `facturapp-cf75f`, que es el que usás
-para FacturApp / Caja Diaria / stock sync.
+Alta, edición y borrado de productos y categorías contra Firestore, dentro
+de tu proyecto Firebase propio de CHALLENGE (`paginachallengearg`) —
+separado de `facturapp-cf75f`, que es el que usás para FacturApp / Caja
+Diaria / stock sync.
 
-**Con PIN.** Pide un PIN simple antes de mostrar el panel (por defecto `2580`,
-definido en `lib/adminAuth.ts` — cambialo ahí directo si querés otro). Es un
-control básico, pensado para que no cualquiera entre de casualidad, no una
-barrera fuerte — el PIN vive en el código del frontend. Para un catálogo de
-productos sin datos sensibles alcanza; si en algún momento necesitás más
-seguridad, avisame. La sesión dura 12 horas (`localStorage` del navegador).
+**Con PIN.** Pide un PIN simple antes de mostrar el panel (por defecto
+`2580`, definido en `lib/adminAuth.ts` — cambialo ahí directo si querés
+otro). Es un control básico, pensado para que no cualquiera entre de
+casualidad, no una barrera fuerte. La sesión dura 12 horas (`localStorage`
+del navegador).
 
 ### Categorías
 
-Desde el panel podés crear categorías (ej. "Ropa deporte", "Complementos") y
-asignarle una a cada producto al cargarlo o editarlo. Aparecen en dos lugares:
+Desde el panel podés crear categorías y asignarle una a cada producto.
+Aparecen en el menú de arriba de la home (dinámico, se actualiza solo) y
+como pills de filtro arriba del grid de "Destacados".
 
-- En el **menú de arriba** de la home, como links (`Header.tsx` las trae de
-  Firestore automáticamente — no hay que tocar código para que un link nuevo
-  aparezca cuando creás una categoría).
-- Como **pills de filtro** arriba del grid de "Destacados".
+### Auditoría de cambios de stock
 
-Ambos apuntan al mismo filtro: hacer click en una categoría del menú lleva a
-la home con esa categoría ya seleccionada. Si borrás una categoría, los
-productos que la tenían asignada simplemente quedan sin categoría (no se
-borran).
+Si editás un producto ya cargado y cambiás el número de stock, aparece un
+recuadro obligatorio con borde coral que pide **motivo del cambio** y
+**firma (nombre de quien lo cambia)** — sin completar los dos, el botón de
+guardar no deja pasar el cambio. No aplica al crear un producto nuevo, solo
+al modificar el stock de uno existente.
 
-### Reglas de seguridad de Firestore
-
-Tu proyecto `paginachallengearg` arrancó con las reglas por defecto de Firebase
-("modo test"): dejan que **cualquiera con tu API key lea, edite y borre todo**
-en la base, y además caducan a los 30 días (después de eso, se bloquea todo por
-completo). Conviene reemplazarlas antes de cargar productos reales.
-
-Te dejo las reglas en `firestore.rules`. Para aplicarlas: Firebase Console →
-tu proyecto → Firestore Database → pestaña **Reglas** → pegás el contenido de
-`firestore.rules` reemplazando lo que hay → **Publicar**.
-
-Dejan `challenge_productos` y `challenge_categorias` con lectura y escritura
-abiertas (lo necesita la home para mostrar el catálogo, y así no hay que
-configurar nada más), y todo lo demás en la base bloqueado por las dudas.
+Cada cambio válido queda guardado en una colección aparte de Firestore,
+`challenge_stock_log` (producto, stock anterior, stock nuevo, motivo, firma,
+fecha) — es de solo lectura después de creado, nadie puede editarlo ni
+borrarlo, ni siquiera desde el panel. Sirve como historial por si en algún
+momento hay que revisar quién cambió qué y por qué. Hoy no hay una pantalla
+para *ver* ese historial dentro del sitio — si lo querés, avisame y le
+armamos una vista (o mientras tanto se puede consultar directo en Firestore
+Console → Datos → challenge_stock_log).
 
 ### Fotos y videos de producto
 
 Se cargan pegando un **link (URL)**, no subiendo el archivo — así evitamos
-depender de Firebase Storage, que desde hace poco exige tener una tarjeta
-cargada (plan "Blaze") incluso para uso gratuito.
+depender de Firebase Storage, que exige tarjeta cargada (plan "Blaze")
+incluso para uso gratuito.
 
-- **URL de imagen**: obligatoria en la práctica. Para conseguir el link, subís
-  la foto a un servicio gratuito como [imgur.com](https://imgur.com) (sin
-  necesidad de cuenta) y copiás el link directo a la imagen. También podés
-  usar una imagen que ya esté alojada en Mercado Libre o Tienda Nube.
-- **URL de video** (opcional): si la completás, en la home la card del
-  producto muestra ese video en loop en vez de la foto — igual que el video
-  del hero. Tiene que ser un link directo a un archivo `.mp4` (no un link a
-  YouTube — para eso habría que armarlo distinto, avisame si lo necesitás).
+- **URL de imagen**: para conseguir el link, subís la foto a
+  [imgur.com](https://imgur.com) (sin cuenta) y copiás el link directo
+  (`i.imgur.com/....jpg`, no el link al álbum).
+- **URL de video** (opcional): si la completás, la card del producto muestra
+  ese video en loop en vez de la foto. Tiene que ser un link directo a un
+  `.mp4`.
 
-### Antes de correrlo
+### Reglas de seguridad de Firestore
 
-1. Las credenciales de `paginachallengearg` ya están cargadas en `lib/firebase.ts`.
-   Si en algún momento rotás la API key o cambiás de proyecto, actualizalas ahí (o
-   mejor, pasalas por variables de entorno `NEXT_PUBLIC_FIREBASE_*` en Netlify).
-2. Instalá la dependencia nueva: `npm install firebase`.
-3. Publicá `firestore.rules` en Firebase Console (ver arriba).
-4. Las colecciones `challenge_productos` y `challenge_categorias` se crean
-   solas apenas uses el panel — no hace falta crearlas a mano.
+`challenge_productos`, `challenge_categorias` y `challenge_ventas` quedan
+con lectura y escritura abiertas (necesario para que la home funcione sin
+más configuración), y todo lo demás en la base bloqueado por defecto.
 
-### Cómo funciona la home
+## Registro de ventas (`/ventas`)
 
-`FeaturedGridLive` (client component) trae productos y categorías desde
-Firestore al cargar la página. Si la colección de productos está vacía o
-falla la conexión, muestra los 6 productos de ejemplo de `data/products.ts`
-como fallback — así la home nunca queda en blanco mientras cargás el catálogo
-real.
+Página escondida — no aparece en ningún menú del sitio, solo accesible si
+sabés la URL directa. Protegida con el mismo PIN que `/admin`.
+
+Sirve para anotar cada venta a mano: fecha, producto (podés elegir uno ya
+cargado en el catálogo o escribir uno nuevo), cantidad, precio, medio de
+pago y una nota libre. **No genera factura oficial de AFIP** — es solo un
+registro interno.
+
+### Stock sincronizado con el catálogo
+
+Cuando elegís un producto que ya está cargado en `/admin`, al registrar la
+venta se descuenta automáticamente esa cantidad del stock — el mismo
+número que se muestra en la página pública. Si borrás esa venta después,
+el stock se repone. La resta/suma de stock usa una transacción de
+Firestore, así que dos ventas casi simultáneas no se pisan entre sí.
+
+## Contabilidad (`/contabilidad`)
+
+Otra página escondida, con el mismo PIN. Agrupa lo cargado en `/ventas` en:
+
+- Total vendido y unidades vendidas del período elegido
+- Total por producto (unidades y monto)
+- Total por medio de pago
+
+Con filtros rápidos (Hoy / 7 días / Este mes / Todo).
 
 ## Pedido por WhatsApp
 
-El botón del carrito ("Enviar pedido por WhatsApp") arma un mensaje con el detalle
-del pedido (producto, color, talle, cantidad, subtotal) y abre WhatsApp con el
-número del negocio, todo listo para que el cliente solo tenga que apretar enviar.
-
-Ya está configurado con el número real del negocio (`5491137952557`) en
-`lib/whatsapp.ts`, constante `WHATSAPP_NUMBER`. Si en algún momento cambia,
-se edita ahí directo.
-
-Es un buen punto de partida mientras no está armado el checkout de Mercado Pago:
-el pedido llega ordenado por WhatsApp y coordinás pago y envío a mano. Cuando
-quieras, migramos esto a Checkout Pro para que el pago quede automatizado.
-
-## Pendiente para el flujo completo
-
-- Página de producto individual (`/productos/[slug]`) con selector de color/talle real
-  (ahora mismo `addItem` toma el primer color y talle por defecto).
-- Migrar `handleCheckout` en `CartDrawer.tsx` de WhatsApp a Mercado Pago Checkout Pro
-  (crear preferencia desde una Netlify Function o API route y redirigir al init_point).
-- Botón de arrepentimiento y defensa del consumidor en el footer (requisito legal AR,
-  como en challengearg.com).
+El botón del carrito ("Enviar pedido por WhatsApp") arma un mensaje con el
+detalle del pedido y abre WhatsApp con el número del negocio
+(`5491137952557`, configurado en `lib/whatsapp.ts`).
 
 ## Ubicación (mapa + link a Google)
 
-Al final de la home hay una sección "Visitanos" con:
+Al final de la home hay una sección "Visitanos" con mapa de Google
+embebido (dirección: Amenábar 1024, Colegiales, CABA — editable en
+`components/LocationSection.tsx`), botón "Cómo llegar" y link a las
+reseñas reales en Google Maps.
 
-- Mapa de Google embebido (iframe, sin necesidad de API key ni facturación).
-- Botón "Cómo llegar" → abre Google Maps con la ruta hacia el local.
-- Link "Ver opiniones en Google" → lleva a la ficha real del local en Google
-  Maps, donde se ven el rating y las reseñas actualizadas.
+## Pendiente para el flujo completo
 
-La dirección está fija en `components/LocationSection.tsx`, constante
-`STORE_ADDRESS` (hoy: "Amenábar 1024, Colegiales, CABA"). Si el local se
-muda, es la única línea que hay que tocar.
-
-**Sobre las reseñas de Google:** no se pueden copiar/mostrar los comentarios
-reales dentro de tu página — es contenido de terceros protegido y va contra
-los términos de uso de Google hacerlo por fuera de su API oficial. El link
-"Ver opiniones en Google" lleva directo a la ficha real, que siempre muestra
-las reseñas actualizadas. Si más adelante querés mostrarlas *embebidas* en tu
-propia página, se puede hacer con la API oficial de Google Places, pero
-requiere activar facturación en Google Cloud (tiene capa gratuita) — avisame
-si en algún momento querés ese nivel.
+- Selector de color/talle real integrado al botón rápido "Agregar al
+  carrito" de la home (hoy usa el primer color/talle; en la página de
+  producto individual sí es seleccionable).
+- Migrar el checkout de WhatsApp a Mercado Pago Checkout Pro.
+- Botón de arrepentimiento y defensa del consumidor en el footer (requisito
+  legal AR).
 
 ## Paleta
 

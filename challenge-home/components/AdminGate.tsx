@@ -63,7 +63,7 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
             CHALLENGE — Admin
           </div>
           <p style={{ fontSize: 13, color: "rgba(36,19,34,0.6)", marginBottom: 20 }}>
-            Ingresá el PIN para gestionar el catálogo.
+            Ingresá el PIN para continuar.
           </p>
           <input
             type="password"
