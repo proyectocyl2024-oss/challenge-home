@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Product } from "@/data/products";
-import { fetchProducts, adjustProductStock } from "@/lib/products";
+import { fetchProducts, adjustProductStock, adjustVariantStock } from "@/lib/products";
 import { fetchCategories, type Category } from "@/lib/categories";
 import { createSale, type PaymentMethod } from "@/lib/sales";
 import { downloadReceiptPdf } from "@/lib/receipt";
@@ -15,6 +15,7 @@ const formatARS = (value: number) =>
   );
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const nowHM = () => new Date().toTimeString().slice(0, 5);
 
 const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: "efectivo", label: "Efectivo" },
@@ -23,11 +24,14 @@ const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
 ];
 
 type CartLine = {
+  lineId: string; // identificador único de la línea (puede haber varias líneas del mismo producto en distintas variantes)
   productId: string;
   name: string;
   price: number;
   quantity: number;
   maxStock: number;
+  color?: string;
+  size?: string;
 };
 
 export default function SalesPanel() {
@@ -58,6 +62,12 @@ export default function SalesPanel() {
   const [manualName, setManualName] = useState("");
   const [manualPrice, setManualPrice] = useState("");
   const [manualQty, setManualQty] = useState("1");
+
+  // --- Selector de color/talle al tocar un producto con variantes ---
+  const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
+  const [pickerColor, setPickerColor] = useState("");
+  const [pickerSize, setPickerSize] = useState("");
+  const [pickerQty, setPickerQty] = useState(1);
 
   async function load() {
     setLoading(true);
@@ -90,42 +100,96 @@ export default function SalesPanel() {
     return list;
   }, [products, activeCategory, search]);
 
+  function stockForVariant(p: Product, color: string, size: string): number {
+    if (!p.variants || p.variants.length === 0) return p.stock;
+    return p.variants.find((v) => v.color === color && v.size === size)?.stock ?? 0;
+  }
+
+  function handleProductClick(p: Product) {
+    if (p.stock <= 0) return;
+    if (p.variants && p.variants.length > 0) {
+      setVariantPickerProduct(p);
+      setPickerColor(p.colors[0] ?? "");
+      setPickerSize(p.sizes[0] ?? "");
+      setPickerQty(1);
+    } else {
+      addToCart(p);
+    }
+  }
+
   function addToCart(p: Product) {
     if (p.stock <= 0) return;
     setCart((prev) => {
-      const existing = prev.find((l) => l.productId === p.id);
+      const existing = prev.find((l) => l.lineId === p.id);
       if (existing) {
         if (existing.quantity >= p.stock) return prev; // no superar el stock disponible
-        return prev.map((l) => (l.productId === p.id ? { ...l, quantity: l.quantity + 1 } : l));
+        return prev.map((l) => (l.lineId === p.id ? { ...l, quantity: l.quantity + 1 } : l));
       }
-      return [...prev, { productId: p.id, name: p.name, price: p.price, quantity: 1, maxStock: p.stock }];
+      return [
+        ...prev,
+        { lineId: p.id, productId: p.id, name: p.name, price: p.price, quantity: 1, maxStock: p.stock },
+      ];
     });
   }
 
-  function changeQty(productId: string, delta: number) {
+  function confirmVariantPick() {
+    if (!variantPickerProduct) return;
+    const p = variantPickerProduct;
+    const stock = stockForVariant(p, pickerColor, pickerSize);
+    if (stock <= 0) return;
+    const qty = Math.min(pickerQty, stock);
+    const lineId = `${p.id}|${pickerColor}|${pickerSize}`;
+    setCart((prev) => {
+      const existing = prev.find((l) => l.lineId === lineId);
+      if (existing) {
+        const newQty = Math.min(stock, existing.quantity + qty);
+        return prev.map((l) => (l.lineId === lineId ? { ...l, quantity: newQty } : l));
+      }
+      return [
+        ...prev,
+        {
+          lineId,
+          productId: p.id,
+          name: p.name,
+          price: p.price,
+          quantity: qty,
+          maxStock: stock,
+          color: pickerColor,
+          size: pickerSize,
+        },
+      ];
+    });
+    setVariantPickerProduct(null);
+  }
+
+  function changeQty(lineId: string, delta: number) {
     setCart((prev) =>
       prev
         .map((l) =>
-          l.productId === productId
-            ? { ...l, quantity: Math.max(0, Math.min(l.maxStock, l.quantity + delta)) }
-            : l
+          l.lineId === lineId ? { ...l, quantity: Math.max(0, Math.min(l.maxStock, l.quantity + delta)) } : l
         )
         .filter((l) => l.quantity > 0)
     );
   }
 
-  function removeLine(productId: string) {
-    setCart((prev) => prev.filter((l) => l.productId !== productId));
+  function changePrice(lineId: string, newPrice: number) {
+    setCart((prev) => prev.map((l) => (l.lineId === lineId ? { ...l, price: Math.max(0, newPrice) } : l)));
+  }
+
+  function removeLine(lineId: string) {
+    setCart((prev) => prev.filter((l) => l.lineId !== lineId));
   }
 
   function addManualToCart() {
     const price = Number(manualPrice) || 0;
     const qty = Number(manualQty) || 1;
     if (!manualName.trim() || price <= 0) return;
+    const lineId = `manual-${Date.now()}`;
     setCart((prev) => [
       ...prev,
       {
-        productId: `manual-${Date.now()}`,
+        lineId,
+        productId: lineId,
         name: manualName.trim(),
         price,
         quantity: qty,
@@ -145,20 +209,26 @@ export default function SalesPanel() {
     setConfirming(true);
     setError(null);
     const date = todayISO();
+    const time = nowHM();
     try {
       for (const line of cart) {
         const isManual = line.productId.startsWith("manual-");
         await createSale({
           date,
+          time,
           productId: isManual ? undefined : line.productId,
-          productName: line.name,
+          productName: line.color && line.size ? `${line.name} - ${line.color} / ${line.size}` : line.name,
           quantity: line.quantity,
           unitPrice: line.price,
           total: line.price * line.quantity,
           paymentMethod,
         });
         if (!isManual) {
-          await adjustProductStock(line.productId, -line.quantity);
+          if (line.color && line.size) {
+            await adjustVariantStock(line.productId, line.color, line.size, -line.quantity);
+          } else {
+            await adjustProductStock(line.productId, -line.quantity);
+          }
         }
       }
       setLastReceipt({
@@ -293,7 +363,7 @@ export default function SalesPanel() {
             return (
               <button
                 key={p.id}
-                onClick={() => addToCart(p)}
+                onClick={() => handleProductClick(p)}
                 disabled={outOfStock}
                 style={{
                   textAlign: "left",
@@ -331,9 +401,21 @@ export default function SalesPanel() {
                     marginBottom: 8,
                   }}
                 >
-                  {p.image && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  {p.video ? (
+                    <video
+                      src={p.video}
+                      poster={p.image || undefined}
+                      muted
+                      loop
+                      autoPlay
+                      playsInline
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    p.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    )
                   )}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-950)", marginBottom: 4 }}>
@@ -444,32 +526,57 @@ export default function SalesPanel() {
           <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
             {cart.map((l) => (
               <div
-                key={l.productId}
+                key={l.lineId}
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: 8,
+                  flexDirection: "column",
+                  gap: 6,
                   padding: "10px 0",
                   borderBottom: "1px solid var(--line)",
                 }}
               >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{l.name}</div>
-                  <div style={{ fontSize: 12, color: "rgba(36,19,34,0.5)" }}>{formatARS(l.price)} c/u</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{l.name}</div>
+                    {l.color && l.size && (
+                      <div style={{ fontSize: 11, color: "rgba(36,19,34,0.5)" }}>
+                        {l.color} / {l.size}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => changeQty(l.lineId, -1)} style={qtyBtn}>
+                    −
+                  </button>
+                  <span style={{ fontSize: 13, width: 20, textAlign: "center" }}>{l.quantity}</span>
+                  <button onClick={() => changeQty(l.lineId, 1)} style={qtyBtn} disabled={l.quantity >= l.maxStock}>
+                    +
+                  </button>
+                  <button
+                    onClick={() => removeLine(l.lineId)}
+                    style={{ background: "none", border: "none", color: "#a3271e", fontSize: 16, cursor: "pointer" }}
+                  >
+                    ✕
+                  </button>
                 </div>
-                <button onClick={() => changeQty(l.productId, -1)} style={qtyBtn}>
-                  −
-                </button>
-                <span style={{ fontSize: 13, width: 20, textAlign: "center" }}>{l.quantity}</span>
-                <button onClick={() => changeQty(l.productId, 1)} style={qtyBtn} disabled={l.quantity >= l.maxStock}>
-                  +
-                </button>
-                <button
-                  onClick={() => removeLine(l.productId)}
-                  style={{ background: "none", border: "none", color: "#a3271e", fontSize: 16, cursor: "pointer" }}
-                >
-                  ✕
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 2 }}>
+                  <span style={{ fontSize: 11, color: "rgba(36,19,34,0.5)" }}>Precio c/u:</span>
+                  <span style={{ fontSize: 11, color: "rgba(36,19,34,0.5)" }}>$</span>
+                  <input
+                    type="number"
+                    value={l.price}
+                    onChange={(e) => changePrice(l.lineId, Number(e.target.value) || 0)}
+                    style={{
+                      width: 90,
+                      padding: "3px 6px",
+                      borderRadius: 6,
+                      border: "1px solid var(--line)",
+                      fontSize: 12,
+                    }}
+                  />
+                  <span style={{ fontSize: 11, color: "rgba(36,19,34,0.4)" }}>
+                    (línea: {formatARS(l.price * l.quantity)})
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -595,6 +702,145 @@ export default function SalesPanel() {
         )}
       </div>
     </div>
+
+    {variantPickerProduct && (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(36,19,34,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+        }}
+        onClick={() => setVariantPickerProduct(null)}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: "#fff",
+            borderRadius: 20,
+            padding: 24,
+            width: "min(360px, 90vw)",
+          }}
+        >
+          <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--plum-950)", marginBottom: 4 }}>
+            {variantPickerProduct.name}
+          </h3>
+          <p style={{ fontSize: 13, color: "rgba(36,19,34,0.6)", marginBottom: 16 }}>
+            Elegí color y talle antes de agregar al carrito.
+          </p>
+
+          {variantPickerProduct.colors.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={smallLabel}>Color</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                {variantPickerProduct.colors.map((c) => {
+                  const stock = stockForVariant(variantPickerProduct, c, pickerSize);
+                  const disabled = stock <= 0;
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => !disabled && setPickerColor(c)}
+                      disabled={disabled}
+                      style={{
+                        ...pillStyle(pickerColor === c),
+                        opacity: disabled ? 0.35 : 1,
+                        textDecoration: disabled ? "line-through" : "none",
+                      }}
+                    >
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {variantPickerProduct.sizes.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={smallLabel}>Talle</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                {variantPickerProduct.sizes.map((s) => {
+                  const stock = stockForVariant(variantPickerProduct, pickerColor, s);
+                  const disabled = stock <= 0;
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => !disabled && setPickerSize(s)}
+                      disabled={disabled}
+                      style={{
+                        ...pillStyle(pickerSize === s),
+                        opacity: disabled ? 0.35 : 1,
+                        textDecoration: disabled ? "line-through" : "none",
+                      }}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {(() => {
+            const stock = stockForVariant(variantPickerProduct, pickerColor, pickerSize);
+            return (
+              <p style={{ fontSize: 12, color: stock <= 0 ? "#a3271e" : "rgba(36,19,34,0.5)", marginBottom: 14 }}>
+                {stock <= 0 ? "Sin stock en esta combinación." : `${stock} disponibles.`}
+              </p>
+            );
+          })()}
+
+          <div style={{ marginBottom: 18 }}>
+            <label style={smallLabel}>Cantidad</label>
+            <div className="cart-line__qty" style={{ marginTop: 6 }}>
+              <button onClick={() => setPickerQty((q) => Math.max(1, q - 1))}>−</button>
+              <span>{pickerQty}</span>
+              <button
+                onClick={() =>
+                  setPickerQty((q) => Math.min(stockForVariant(variantPickerProduct, pickerColor, pickerSize), q + 1))
+                }
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={confirmVariantPick}
+              disabled={stockForVariant(variantPickerProduct, pickerColor, pickerSize) <= 0}
+              style={{
+                flex: 1,
+                background: "var(--coral-500)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 999,
+                padding: "12px 16px",
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
+              Agregar al carrito
+            </button>
+            <button
+              onClick={() => setVariantPickerProduct(null)}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--line)",
+                borderRadius: 999,
+                padding: "12px 16px",
+                fontSize: 14,
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }

@@ -57,13 +57,8 @@ del navegador).
 ### Categorías
 
 Desde el panel podés crear categorías y asignarle una a cada producto.
-Aparecen en el menú de arriba de la home (dinámico, se actualiza solo). Ya
-no hay una segunda fila de "pills" repitiendo las mismas categorías debajo
-del título "Destacados" — se sacó, quedaba duplicado.
-
-En mobile, si hay muchas categorías, el menú de arriba se desliza
-horizontalmente dentro de su propio espacio en vez de empujar toda la
-página hacia el costado.
+Aparecen como pills de filtro arriba del grid de "Destacados" en la home
+(no en el menú de arriba — ese quedó fijo con solo "Destacados").
 
 ### Mostrar/ocultar producto en la home
 
@@ -72,6 +67,27 @@ home / Destacados", tildado por defecto. Si lo destildás, ese producto
 sigue existiendo en el catálogo (podés seguir vendiéndolo desde `/ventas`,
 por ejemplo) pero no aparece en la página pública. Útil para productos que
 solo vendés en el local, o que todavía no querés publicar.
+
+### Stock por color y talle
+
+Si un producto tiene colores **y** talles cargados, el panel reemplaza el
+campo simple de "Stock" por una grilla: una fila por color, una columna por
+talle, y un número de stock en cada celda. El total que se muestra en las
+cards y en la home es la suma automática de toda la grilla.
+
+Si un producto no tiene colores o no tiene talles (por ejemplo, un
+accesorio de talle único), sigue funcionando con el campo de "Stock" simple
+de siempre — no hace falta la grilla para eso.
+
+En la página de cada producto, las opciones de color/talle sin stock en esa
+combinación puntual aparecen tachadas y no se pueden elegir. En `/ventas`,
+al tocar un producto con esta grilla cargada, aparece un selector para
+elegir color y talle antes de agregarlo al carrito — el descuento de stock
+al confirmar la venta es de esa combinación específica, no del total.
+
+**Importante:** los productos que ya tenías cargados sin esta grilla (sin
+`variants`) siguen funcionando exactamente igual que antes — esto es
+totalmente opcional, no hace falta migrar nada a mano.
 
 ### Auditoría de cambios de stock
 
@@ -83,12 +99,8 @@ al modificar el stock de uno existente.
 
 Cada cambio válido queda guardado en una colección aparte de Firestore,
 `challenge_stock_log` (producto, stock anterior, stock nuevo, motivo, firma,
-fecha) — es de solo lectura después de creado, nadie puede editarlo ni
-borrarlo, ni siquiera desde el panel. Sirve como historial por si en algún
-momento hay que revisar quién cambió qué y por qué. Hoy no hay una pantalla
-para *ver* ese historial dentro del sitio — si lo querés, avisame y le
-armamos una vista (o mientras tanto se puede consultar directo en Firestore
-Console → Datos → challenge_stock_log).
+fecha). Podés verlo en `/admin`, botón "Ver historial de cambios de stock"
+al final de la página.
 
 ### Fotos y videos de producto
 
@@ -96,11 +108,17 @@ Se cargan pegando un **link (URL)**, no subiendo el archivo — así evitamos
 depender de Firebase Storage, que exige tarjeta cargada (plan "Blaze")
 incluso para uso gratuito.
 
-- **URL de imagen**: para conseguir el link, subís la foto a
+- **URL de imagen**: es la foto principal, la que se ve en la card del
+  catálogo y en el panel de ventas. Para conseguir el link, subís la foto a
   [imgur.com](https://imgur.com) (sin cuenta) y copiás el link directo
   (`i.imgur.com/....jpg`, no el link al álbum).
-- **URL de video** (opcional): si la completás, la card del producto muestra
-  ese video en loop en vez de la foto. Tiene que ser un link directo a un
+- **Fotos adicionales** (opcional): podés agregar todas las que quieras.
+  Se suman como galería con miniaturas clickeables en la página de detalle
+  del producto (no aparecen en la card chica del catálogo, solo la
+  principal).
+- **URL de video** (opcional): si la completás, se muestra en loop en vez
+  de la foto principal — tanto en la card del catálogo, en la página de
+  detalle, como en el grid de `/ventas`. Tiene que ser un link directo a un
   `.mp4`.
 
 ### Reglas de seguridad de Firestore

@@ -18,6 +18,7 @@ export type PaymentMethod = "efectivo" | "transferencia" | "posnet";
 export type Sale = {
   id: string;
   date: string; // YYYY-MM-DD
+  time: string; // HH:MM
   productId?: string; // vincula con challenge_productos, si corresponde a uno del catálogo
   productName: string;
   quantity: number;
@@ -41,11 +42,12 @@ export async function fetchSales(): Promise<Sale[]> {
   const db = getDb();
   const q = query(collection(db, COLLECTION), orderBy("date", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => {
+  const sales = snap.docs.map((d) => {
     const data = d.data();
     return {
       id: d.id,
       date: data.date ?? "",
+      time: data.time ?? "",
       productId: data.productId ?? undefined,
       productName: data.productName ?? "",
       quantity: data.quantity ?? 1,
@@ -55,6 +57,8 @@ export async function fetchSales(): Promise<Sale[]> {
       note: data.note ?? undefined,
     } as Sale;
   });
+  // Firestore solo ordena por "date"; dentro del mismo día, ordenamos por hora acá.
+  return sales.sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`));
 }
 
 export async function createSale(input: SaleInput) {

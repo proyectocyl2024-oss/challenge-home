@@ -34,6 +34,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Configuración general del sitio (por ahora: URL del video del hero).
+    // Lectura pública (la necesita la home), escritura abierta desde /admin.
+    match /challenge_config/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Todo lo demás en esta base queda bloqueado por las dudas.
     match /{document=**} {
       allow read, write: if false;

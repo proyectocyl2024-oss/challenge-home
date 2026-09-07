@@ -24,7 +24,18 @@ export default function ProductCard({ product }: { product: Product }) {
 
   const handleAdd = () => {
     if (outOfStock) return;
-    addItem(product, product.colors[0], product.sizes[0]);
+    // Si hay variantes, buscamos la primera combinación con stock real en vez
+    // de asumir a ciegas la primera de cada lista (podría estar agotada).
+    let color = product.colors[0];
+    let size = product.sizes[0];
+    if (product.variants && product.variants.length > 0) {
+      const firstAvailable = product.variants.find((v) => v.stock > 0);
+      if (firstAvailable) {
+        color = firstAvailable.color;
+        size = firstAvailable.size;
+      }
+    }
+    addItem(product, color, size);
     setAdding(true);
     setTimeout(() => setAdding(false), 1200);
   };

@@ -32,6 +32,7 @@ export default function ContabilidadPanel() {
   const [editPrice, setEditPrice] = useState("");
   const [editPayment, setEditPayment] = useState<PaymentMethod>("efectivo");
   const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function load() {
@@ -96,6 +97,7 @@ export default function ContabilidadPanel() {
     setEditPrice(String(s.unitPrice));
     setEditPayment(s.paymentMethod);
     setEditDate(s.date);
+    setEditTime(s.time || "");
   }
 
   function cancelEdit() {
@@ -110,6 +112,7 @@ export default function ContabilidadPanel() {
     try {
       await updateSale(sale.id, {
         date: editDate,
+        time: editTime,
         quantity: newQty,
         unitPrice: newPrice,
         total: newQty * newPrice,
@@ -278,6 +281,10 @@ export default function ContabilidadPanel() {
                   <input style={editInput} type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
                 </div>
                 <div>
+                  <label style={editLabel}>Hora</label>
+                  <input style={editInput} type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} />
+                </div>
+                <div>
                   <label style={editLabel}>Cantidad</label>
                   <input style={editInput} type="number" value={editQty} onChange={(e) => setEditQty(e.target.value)} />
                 </div>
@@ -333,7 +340,10 @@ export default function ContabilidadPanel() {
               </div>
             ) : (
               <div key={s.id} style={rowStyle}>
-                <div style={{ width: 90, color: "rgba(36,19,34,0.5)" }}>{s.date}</div>
+                <div style={{ width: 90, color: "rgba(36,19,34,0.5)" }}>
+                  {s.date}
+                  {s.time && <div style={{ fontSize: 11 }}>{s.time}</div>}
+                </div>
                 <div style={{ flex: 1 }}>
                   {s.productName} · {s.quantity} u. × {formatARS(s.unitPrice)}
                 </div>
