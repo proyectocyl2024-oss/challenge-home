@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { Product } from "@/data/products";
 import {
   fetchProducts,
@@ -50,6 +50,7 @@ export default function AdminPanel() {
   const [compareAtPrice, setCompareAtPrice] = useState("");
   const [installmentsCount, setInstallmentsCount] = useState("3");
   const [stock, setStock] = useState("");
+  const [variantStocks, setVariantStocks] = useState<Record<string, number>>({});
   const [colors, setColors] = useState("");
   const [sizes, setSizes] = useState("");
   const [image, setImage] = useState("");
@@ -143,6 +144,7 @@ export default function AdminPanel() {
     setCompareAtPrice("");
     setInstallmentsCount("3");
     setStock("");
+    setVariantStocks({});
     setColors("");
     setSizes("");
     setImage("");
@@ -166,6 +168,11 @@ export default function AdminPanel() {
     setCompareAtPrice(p.compareAtPrice ? String(p.compareAtPrice) : "");
     setInstallmentsCount(p.installments ? String(p.installments.count) : "3");
     setStock(String(p.stock));
+    const initialVariantStocks: Record<string, number> = {};
+    (p.variants ?? []).forEach((v) => {
+      initialVariantStocks[`${v.color}|${v.size}`] = v.stock;
+    });
+    setVariantStocks(initialVariantStocks);
     setColors(p.colors.join(", "));
     setSizes(p.sizes.join(", "));
     setImage(p.image);
@@ -199,7 +206,7 @@ export default function AdminPanel() {
       return;
     }
 
-    const newStockNum = Number(stock) || 0;
+    const newStockNum = variantTotal;
     const stockChanged = editingId !== null && originalStock !== null && newStockNum !== originalStock;
 
     if (stockChanged && (!stockMotivo.trim() || !stockFirma.trim())) {
@@ -224,6 +231,13 @@ export default function AdminPanel() {
       compareAtPrice: compareNum,
       installments: { count: installmentsCountNum, amount: priceNum / installmentsCountNum },
       stock: newStockNum,
+      variants: hasVariants
+        ? variantCombos.map((combo) => ({
+            color: combo.color,
+            size: combo.size,
+            stock: variantStocks[variantKey(combo.color, combo.size)] ?? 0,
+          }))
+        : undefined,
       colors: colors
         .split(",")
         .map((c) => c.trim())
@@ -280,6 +294,21 @@ export default function AdminPanel() {
   function categoryName(slug?: string) {
     if (!slug) return "Sin categoría";
     return categories.find((c) => c.slug === slug)?.name ?? slug;
+  }
+
+  const parsedColors = colors.split(",").map((c) => c.trim()).filter(Boolean);
+  const parsedSizes = sizes.split(",").map((s) => s.trim()).filter(Boolean);
+  const hasVariants = parsedColors.length > 0 && parsedSizes.length > 0;
+  const variantCombos = hasVariants
+    ? parsedColors.flatMap((c) => parsedSizes.map((s) => ({ color: c, size: s })))
+    : [];
+  const variantKey = (color: string, size: string) => `${color}|${size}`;
+  const variantTotal = hasVariants
+    ? variantCombos.reduce((sum, combo) => sum + (variantStocks[variantKey(combo.color, combo.size)] ?? 0), 0)
+    : Number(stock) || 0;
+
+  function setVariantStock(color: string, size: string, value: number) {
+    setVariantStocks((prev) => ({ ...prev, [variantKey(color, size)]: Math.max(0, value) }));
   }
 
   return (
@@ -515,11 +544,65 @@ export default function AdminPanel() {
         </div>
 
         <div>
-          <label style={labelStyle}>Stock</label>
-          <input style={inputStyle} type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
+          <label style={labelStyle}>Colores (separados por coma)</label>
+          <input style={inputStyle} value={colors} onChange={(e) => setColors(e.target.value)} placeholder="Ciruela, Negro" />
         </div>
 
-        {editingId && originalStock !== null && Number(stock) !== originalStock && (
+        <div>
+          <label style={labelStyle}>Talles (separados por coma)</label>
+          <input style={inputStyle} value={sizes} onChange={(e) => setSizes(e.target.value)} placeholder="S, M, L" />
+        </div>
+
+        {hasVariants ? (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={labelStyle}>Stock por color y talle</label>
+            <p style={{ fontSize: 12, color: "rgba(36,19,34,0.55)", marginTop: -2, marginBottom: 10 }}>
+              Completá el stock de cada combinación. El total ({variantTotal}) se calcula solo, sumando
+              todo lo de abajo.
+            </p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `140px repeat(${parsedSizes.length}, 1fr)`,
+                gap: 8,
+                alignItems: "center",
+                background: "#fff",
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                padding: 14,
+              }}
+            >
+              <div />
+              {parsedSizes.map((s) => (
+                <div key={s} style={{ fontSize: 12, fontWeight: 600, color: "var(--plum-800)", textAlign: "center" }}>
+                  {s}
+                </div>
+              ))}
+              {parsedColors.map((c) => (
+                <Fragment key={c}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{c}</div>
+                  {parsedSizes.map((s) => (
+                    <input
+                      key={`${c}|${s}`}
+                      type="number"
+                      min={0}
+                      value={variantStocks[variantKey(c, s)] ?? 0}
+                      onChange={(e) => setVariantStock(c, s, Number(e.target.value) || 0)}
+                      style={{ ...inputStyle, textAlign: "center", padding: "6px 4px" }}
+                    />
+                  ))}
+                </Fragment>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label style={labelStyle}>Stock</label>
+            <input style={inputStyle} type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
+          </div>
+        )}
+
+        {editingId && originalStock !== null && variantTotal !== originalStock && (
           <div
             style={{
               gridColumn: "1 / -1",
@@ -556,16 +639,6 @@ export default function AdminPanel() {
             </div>
           </div>
         )}
-
-        <div>
-          <label style={labelStyle}>Colores (separados por coma)</label>
-          <input style={inputStyle} value={colors} onChange={(e) => setColors(e.target.value)} placeholder="Ciruela, Negro" />
-        </div>
-
-        <div>
-          <label style={labelStyle}>Talles (separados por coma)</label>
-          <input style={inputStyle} value={sizes} onChange={(e) => setSizes(e.target.value)} placeholder="S, M, L" />
-        </div>
 
         <div style={{ gridColumn: "1 / -1" }}>
           <label style={labelStyle}>URL de imagen</label>

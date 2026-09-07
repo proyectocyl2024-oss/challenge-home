@@ -23,6 +23,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editPayment, setEditPayment] = useState<PaymentMethod>("efectivo");
@@ -48,6 +49,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
   function startEdit(s: Sale) {
     setEditingId(s.id);
     setEditDate(s.date);
+    setEditTime(s.time || "");
     setEditQty(String(s.quantity));
     setEditPrice(String(s.unitPrice));
     setEditPayment(s.paymentMethod);
@@ -65,6 +67,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
     try {
       await updateSale(s.id, {
         date: editDate,
+        time: editTime,
         quantity: newQty,
         unitPrice: newPrice,
         total: newTotal,
@@ -159,7 +162,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr 1fr 1fr 1fr auto auto",
+                        gridTemplateColumns: "1fr 0.8fr 1fr 1fr 1fr auto auto",
                         gap: 8,
                         alignItems: "center",
                       }}
@@ -168,6 +171,12 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
                         type="date"
                         value={editDate}
                         onChange={(e) => setEditDate(e.target.value)}
+                        style={editInputStyle}
+                      />
+                      <input
+                        type="time"
+                        value={editTime}
+                        onChange={(e) => setEditTime(e.target.value)}
                         style={editInputStyle}
                       />
                       <input
@@ -205,7 +214,10 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                      <div style={{ width: 90, color: "rgba(36,19,34,0.5)" }}>{s.date}</div>
+                      <div style={{ width: 90, color: "rgba(36,19,34,0.5)" }}>
+                        {s.date}
+                        {s.time && <div style={{ fontSize: 11 }}>{s.time}</div>}
+                      </div>
                       <div style={{ flex: 1 }}>
                         <strong>{s.productName}</strong> · {s.quantity} u. × {formatARS(s.unitPrice)}
                       </div>

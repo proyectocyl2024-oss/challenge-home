@@ -11,7 +11,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { getDb } from "./firebase";
-import type { Product } from "@/data/products";
+import type { Product, ProductVariant } from "@/data/products";
 
 const COLLECTION = "challenge_productos";
 
@@ -54,6 +54,7 @@ export async function fetchProducts(): Promise<Product[]> {
       compareAtPrice: data.compareAtPrice ?? undefined,
       installments: data.installments ?? undefined,
       stock: data.stock ?? 0,
+      variants: Array.isArray(data.variants) ? data.variants : undefined,
       colors: data.colors ?? [],
       sizes: data.sizes ?? [],
       image: data.image ?? "",
@@ -112,5 +113,39 @@ export async function adjustProductStock(id: string, delta: number): Promise<voi
     const current = (snap.data().stock as number) ?? 0;
     const next = Math.max(0, current + delta);
     tx.update(ref, { stock: next, updatedAt: serverTimestamp() });
+  });
+}
+
+// Igual que adjustProductStock, pero para un producto con stock por
+// combinación de color+talle: ajusta esa variante puntual y recalcula el
+// total (suma de todas las variantes) en el mismo paso.
+export async function adjustVariantStock(
+  id: string,
+  color: string,
+  size: string,
+  delta: number
+): Promise<void> {
+  const db = getDb();
+  const ref = doc(db, COLLECTION, id);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const variants: ProductVariant[] = Array.isArray(data.variants) ? data.variants : [];
+    let found = false;
+    const updated = variants.map((v) => {
+      if (v.color === color && v.size === size) {
+        found = true;
+        return { ...v, stock: Math.max(0, (v.stock ?? 0) + delta) };
+      }
+      return v;
+    });
+    if (!found) {
+      // No existía esa combinación puntual: la creamos (puede pasar si se
+      // vendió algo cargado antes de tener variantes armadas).
+      updated.push({ color, size, stock: Math.max(0, delta) });
+    }
+    const total = updated.reduce((sum, v) => sum + (v.stock ?? 0), 0);
+    tx.update(ref, { variants: updated, stock: total, updatedAt: serverTimestamp() });
   });
 }

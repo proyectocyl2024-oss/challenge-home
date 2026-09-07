@@ -68,6 +68,27 @@ sigue existiendo en el catálogo (podés seguir vendiéndolo desde `/ventas`,
 por ejemplo) pero no aparece en la página pública. Útil para productos que
 solo vendés en el local, o que todavía no querés publicar.
 
+### Stock por color y talle
+
+Si un producto tiene colores **y** talles cargados, el panel reemplaza el
+campo simple de "Stock" por una grilla: una fila por color, una columna por
+talle, y un número de stock en cada celda. El total que se muestra en las
+cards y en la home es la suma automática de toda la grilla.
+
+Si un producto no tiene colores o no tiene talles (por ejemplo, un
+accesorio de talle único), sigue funcionando con el campo de "Stock" simple
+de siempre — no hace falta la grilla para eso.
+
+En la página de cada producto, las opciones de color/talle sin stock en esa
+combinación puntual aparecen tachadas y no se pueden elegir. En `/ventas`,
+al tocar un producto con esta grilla cargada, aparece un selector para
+elegir color y talle antes de agregarlo al carrito — el descuento de stock
+al confirmar la venta es de esa combinación específica, no del total.
+
+**Importante:** los productos que ya tenías cargados sin esta grilla (sin
+`variants`) siguen funcionando exactamente igual que antes — esto es
+totalmente opcional, no hace falta migrar nada a mano.
+
 ### Auditoría de cambios de stock
 
 Si editás un producto ya cargado y cambiás el número de stock, aparece un

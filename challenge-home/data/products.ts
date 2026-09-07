@@ -1,3 +1,9 @@
+export type ProductVariant = {
+  color: string;
+  size: string;
+  stock: number;
+};
+
 export type Product = {
   id: string;
   slug: string;
@@ -7,7 +13,8 @@ export type Product = {
   price: number;
   compareAtPrice?: number;
   installments?: { count: number; amount: number };
-  stock: number;
+  stock: number; // total: si hay variants, es la suma de todas; si no, es el stock único del producto
+  variants?: ProductVariant[]; // stock por combinación de color+talle (opcional)
   colors: string[];
   sizes: string[];
   image: string; // foto principal

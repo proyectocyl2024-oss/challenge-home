@@ -77,8 +77,19 @@ export default function ProductoPage() {
       ? Math.round(100 - (product.price / product.compareAtPrice) * 100)
       : null;
 
+  // Stock de la combinación color+talle elegida (si el producto tiene variantes),
+  // o el stock general del producto si no las tiene.
+  function stockFor(color: string, size: string): number {
+    if (!product!.variants || product!.variants.length === 0) return product!.stock;
+    const match = product!.variants.find((v) => v.color === color && v.size === size);
+    return match?.stock ?? 0;
+  }
+
+  const selectedVariantStock = stockFor(selectedColor, selectedSize);
+  const selectedOutOfStock = product.variants && product.variants.length > 0 ? selectedVariantStock <= 0 : outOfStock;
+
   const handleAdd = () => {
-    if (outOfStock) return;
+    if (selectedOutOfStock) return;
     addItem(product, selectedColor, selectedSize, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
@@ -174,15 +185,21 @@ export default function ProductoPage() {
               <div className="product-detail__field">
                 <label>Color</label>
                 <div className="product-detail__options">
-                  {product.colors.map((c) => (
-                    <button
-                      key={c}
-                      className={`product-detail__option ${selectedColor === c ? "product-detail__option--active" : ""}`}
-                      onClick={() => setSelectedColor(c)}
-                    >
-                      {c}
-                    </button>
-                  ))}
+                  {product.colors.map((c) => {
+                    const disabled =
+                      product.variants && product.variants.length > 0 && stockFor(c, selectedSize) <= 0;
+                    return (
+                      <button
+                        key={c}
+                        className={`product-detail__option ${selectedColor === c ? "product-detail__option--active" : ""}`}
+                        onClick={() => setSelectedColor(c)}
+                        disabled={disabled}
+                        style={disabled ? { opacity: 0.35, textDecoration: "line-through" } : undefined}
+                      >
+                        {c}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -191,17 +208,31 @@ export default function ProductoPage() {
               <div className="product-detail__field">
                 <label>Talle</label>
                 <div className="product-detail__options">
-                  {product.sizes.map((s) => (
-                    <button
-                      key={s}
-                      className={`product-detail__option ${selectedSize === s ? "product-detail__option--active" : ""}`}
-                      onClick={() => setSelectedSize(s)}
-                    >
-                      {s}
-                    </button>
-                  ))}
+                  {product.sizes.map((s) => {
+                    const disabled =
+                      product.variants && product.variants.length > 0 && stockFor(selectedColor, s) <= 0;
+                    return (
+                      <button
+                        key={s}
+                        className={`product-detail__option ${selectedSize === s ? "product-detail__option--active" : ""}`}
+                        onClick={() => setSelectedSize(s)}
+                        disabled={disabled}
+                        style={disabled ? { opacity: 0.35, textDecoration: "line-through" } : undefined}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+            )}
+
+            {product.variants && product.variants.length > 0 && (
+              <p style={{ fontSize: 12, color: selectedOutOfStock ? "#a3271e" : "rgba(36,19,34,0.5)", marginTop: -10, marginBottom: 16 }}>
+                {selectedOutOfStock
+                  ? "Sin stock en esta combinación."
+                  : `${selectedVariantStock} disponibles en ${selectedColor} / ${selectedSize}.`}
+              </p>
             )}
 
             <div className="product-detail__field">
@@ -209,16 +240,26 @@ export default function ProductoPage() {
               <div className="cart-line__qty" style={{ marginTop: 6 }}>
                 <button onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button>
                 <span>{quantity}</span>
-                <button onClick={() => setQuantity((q) => q + 1)}>+</button>
+                <button
+                  onClick={() =>
+                    setQuantity((q) =>
+                      product.variants && product.variants.length > 0
+                        ? Math.min(selectedVariantStock, q + 1)
+                        : q + 1
+                    )
+                  }
+                >
+                  +
+                </button>
               </div>
             </div>
 
             <button
               className="hero__cta product-detail__cta"
               onClick={handleAdd}
-              disabled={outOfStock}
+              disabled={selectedOutOfStock}
             >
-              {outOfStock ? "Sin stock" : added ? "¡Agregado al carrito!" : "Agregar al carrito"}
+              {selectedOutOfStock ? "Sin stock" : added ? "¡Agregado al carrito!" : "Agregar al carrito"}
             </button>
           </div>
         </div>
