@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Product } from "@/data/products";
 import { fetchProducts, adjustProductStock, adjustVariantStock } from "@/lib/products";
 import { fetchCategories, type Category } from "@/lib/categories";
-import { createSale, type PaymentMethod } from "@/lib/sales";
+import { createSale, type PaymentMethod, type SaleChannel } from "@/lib/sales";
 import { downloadReceiptPdf } from "@/lib/receipt";
 import SalesHistory from "./SalesHistory";
 import InternalNav from "./InternalNav";
@@ -21,6 +21,13 @@ const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: "efectivo", label: "Efectivo" },
   { value: "transferencia", label: "Transferencia" },
   { value: "posnet", label: "Posnet" },
+];
+
+const CHANNEL_OPTIONS: { value: SaleChannel; label: string }[] = [
+  { value: "local", label: "Venta en local" },
+  { value: "online", label: "Venta online" },
+  { value: "evento", label: "Venta en evento" },
+  { value: "estudios", label: "Venta a estudios" },
 ];
 
 type CartLine = {
@@ -44,6 +51,7 @@ export default function SalesPanel() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("efectivo");
+  const [channel, setChannel] = useState<SaleChannel>("local");
   const [confirming, setConfirming] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [customerName, setCustomerName] = useState("");
@@ -222,6 +230,7 @@ export default function SalesPanel() {
           unitPrice: line.price,
           total: line.price * line.quantity,
           paymentMethod,
+          channel,
         });
         if (!isManual) {
           if (line.color && line.size) {
@@ -241,6 +250,7 @@ export default function SalesPanel() {
       });
       setCart([]);
       setPaymentMethod("efectivo");
+      setChannel("local");
       setCustomerName("");
       setCustomerPhone("");
       setHistoryRefreshKey((k) => k + 1);
@@ -611,6 +621,21 @@ export default function SalesPanel() {
                 key={opt.value}
                 onClick={() => setPaymentMethod(opt.value)}
                 style={pillStyle(paymentMethod === opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={smallLabel}>Canal de venta</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+            {CHANNEL_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setChannel(opt.value)}
+                style={pillStyle(channel === opt.value)}
               >
                 {opt.label}
               </button>
