@@ -1,0 +1,271 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import type { Product } from "@/data/products";
+import { fetchProductBySlug } from "@/lib/products";
+import { useCartStore } from "@/store/cartStore";
+import Header from "@/components/Header";
+import CartDrawer from "@/components/CartDrawer";
+
+const formatARS = (value: number) =>
+  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(
+    value
+  );
+
+export default function ProductoPage() {
+  const params = useParams();
+  const slug = typeof params.slug === "string" ? params.slug : "";
+
+  const [product, setProduct] = useState<Product | null | undefined>(undefined);
+  const [selectedColor, setSelectedColor] = useState("");
+  const [selectedSize, setSelectedSize] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [added, setAdded] = useState(false);
+  const [activeMediaIndex, setActiveMediaIndex] = useState<number>(-2); // -1 = video, 0+ = índice en la galería de fotos
+
+  const addItem = useCartStore((s) => s.addItem);
+
+  useEffect(() => {
+    if (!slug) return;
+    fetchProductBySlug(slug)
+      .then((p) => {
+        setProduct(p);
+        if (p) {
+          setSelectedColor(p.colors[0] ?? "");
+          setSelectedSize(p.sizes[0] ?? "");
+          setActiveMediaIndex(p.video ? -1 : 0);
+        }
+      })
+      .catch((e) => {
+        console.error("Error trayendo el producto:", e);
+        setProduct(null);
+      });
+  }, [slug]);
+
+  if (product === undefined) {
+    return (
+      <>
+        <Header />
+        <div style={{ padding: "80px 24px", textAlign: "center", color: "rgba(36,19,34,0.5)" }}>
+          Cargando...
+        </div>
+      </>
+    );
+  }
+
+  if (product === null) {
+    return (
+      <>
+        <Header />
+        <div style={{ padding: "80px 24px", textAlign: "center" }}>
+          <p style={{ color: "rgba(36,19,34,0.6)", marginBottom: 16 }}>
+            No encontramos este producto.
+          </p>
+          <Link href="/" className="hero__cta">
+            Volver al catálogo
+          </Link>
+        </div>
+      </>
+    );
+  }
+
+  const outOfStock = product.stock === 0;
+  const discount =
+    product.compareAtPrice && product.compareAtPrice > product.price
+      ? Math.round(100 - (product.price / product.compareAtPrice) * 100)
+      : null;
+
+  // Stock de la combinación color+talle elegida (si el producto tiene variantes),
+  // o el stock general del producto si no las tiene.
+  function stockFor(color: string, size: string): number {
+    if (!product!.variants || product!.variants.length === 0) return product!.stock;
+    const match = product!.variants.find((v) => v.color === color && v.size === size);
+    return match?.stock ?? 0;
+  }
+
+  const selectedVariantStock = stockFor(selectedColor, selectedSize);
+  const selectedOutOfStock = product.variants && product.variants.length > 0 ? selectedVariantStock <= 0 : outOfStock;
+
+  const handleAdd = () => {
+    if (selectedOutOfStock) return;
+    addItem(product, selectedColor, selectedSize, quantity);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  };
+
+  return (
+    <>
+      <Header />
+
+      <div className="product-detail">
+        <Link href="/#destacados" className="product-detail__back">
+          ← Volver al catálogo
+        </Link>
+
+        <div className="product-detail__grid">
+          <div>
+            <div className="product-detail__media">
+              {activeMediaIndex === -1 && product.video ? (
+                <video
+                  src={product.video}
+                  poster={product.image || undefined}
+                  muted
+                  loop
+                  autoPlay
+                  playsInline
+                />
+              ) : (
+                (() => {
+                  const gallery = [product.image, ...(product.images ?? [])].filter(Boolean);
+                  const src = gallery[activeMediaIndex] ?? product.image;
+                  return (
+                    src && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={src} alt={product.name} />
+                    )
+                  );
+                })()
+              )}
+              {outOfStock ? (
+                <span className="product-card__badge product-card__badge--out">Sin stock</span>
+              ) : product.tag === "nuevo" ? (
+                <span className="product-card__badge">Nuevo</span>
+              ) : discount ? (
+                <span className="product-card__badge product-card__badge--sale">{discount}% OFF</span>
+              ) : null}
+            </div>
+
+            {(product.images && product.images.length > 0) || product.video ? (
+              <div className="product-detail__thumbs">
+                {product.video && (
+                  <button
+                    className={`product-detail__thumb ${activeMediaIndex === -1 ? "product-detail__thumb--active" : ""}`}
+                    onClick={() => setActiveMediaIndex(-1)}
+                  >
+                    <video src={product.video} muted playsInline />
+                  </button>
+                )}
+                {[product.image, ...(product.images ?? [])].filter(Boolean).map((url, i) => (
+                  <button
+                    key={i}
+                    className={`product-detail__thumb ${activeMediaIndex === i ? "product-detail__thumb--active" : ""}`}
+                    onClick={() => setActiveMediaIndex(i)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt={`${product.name} foto ${i + 1}`} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="product-detail__info">
+            <h1 className="product-detail__name">{product.name}</h1>
+
+            <div className="product-detail__prices">
+              <span className="product-detail__price">{formatARS(product.price)}</span>
+              {product.compareAtPrice && (
+                <span className="product-card__compare">{formatARS(product.compareAtPrice)}</span>
+              )}
+            </div>
+
+            {product.installments && (
+              <div className="product-card__installments" style={{ marginBottom: 20 }}>
+                {product.installments.count}x {formatARS(product.installments.amount)} sin interés
+              </div>
+            )}
+
+            {product.description && (
+              <p className="product-detail__description">{product.description}</p>
+            )}
+
+            {product.colors.length > 0 && (
+              <div className="product-detail__field">
+                <label>Color</label>
+                <div className="product-detail__options">
+                  {product.colors.map((c) => {
+                    const disabled =
+                      product.variants && product.variants.length > 0 && stockFor(c, selectedSize) <= 0;
+                    return (
+                      <button
+                        key={c}
+                        className={`product-detail__option ${selectedColor === c ? "product-detail__option--active" : ""}`}
+                        onClick={() => setSelectedColor(c)}
+                        disabled={disabled}
+                        style={disabled ? { opacity: 0.35, textDecoration: "line-through" } : undefined}
+                      >
+                        {c}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {product.sizes.length > 0 && (
+              <div className="product-detail__field">
+                <label>Talle</label>
+                <div className="product-detail__options">
+                  {product.sizes.map((s) => {
+                    const disabled =
+                      product.variants && product.variants.length > 0 && stockFor(selectedColor, s) <= 0;
+                    return (
+                      <button
+                        key={s}
+                        className={`product-detail__option ${selectedSize === s ? "product-detail__option--active" : ""}`}
+                        onClick={() => setSelectedSize(s)}
+                        disabled={disabled}
+                        style={disabled ? { opacity: 0.35, textDecoration: "line-through" } : undefined}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {product.variants && product.variants.length > 0 && (
+              <p style={{ fontSize: 12, color: selectedOutOfStock ? "#a3271e" : "rgba(36,19,34,0.5)", marginTop: -10, marginBottom: 16 }}>
+                {selectedOutOfStock
+                  ? "Sin stock en esta combinación."
+                  : `${selectedVariantStock} disponibles en ${selectedColor} / ${selectedSize}.`}
+              </p>
+            )}
+
+            <div className="product-detail__field">
+              <label>Cantidad</label>
+              <div className="cart-line__qty" style={{ marginTop: 6 }}>
+                <button onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button>
+                <span>{quantity}</span>
+                <button
+                  onClick={() =>
+                    setQuantity((q) =>
+                      product.variants && product.variants.length > 0
+                        ? Math.min(selectedVariantStock, q + 1)
+                        : q + 1
+                    )
+                  }
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <button
+              className="hero__cta product-detail__cta"
+              onClick={handleAdd}
+              disabled={selectedOutOfStock}
+            >
+              {selectedOutOfStock ? "Sin stock" : added ? "¡Agregado al carrito!" : "Agregar al carrito"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <CartDrawer />
+    </>
+  );
+}
