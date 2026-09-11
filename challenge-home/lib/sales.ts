@@ -14,6 +14,7 @@ import { getDb } from "./firebase";
 const COLLECTION = "challenge_ventas";
 
 export type PaymentMethod = "efectivo" | "transferencia" | "posnet";
+export type SaleChannel = "local" | "online" | "evento" | "estudios";
 
 export type Sale = {
   id: string;
@@ -25,6 +26,7 @@ export type Sale = {
   unitPrice: number;
   total: number;
   paymentMethod: PaymentMethod;
+  channel: SaleChannel;
   note?: string;
 };
 
@@ -54,6 +56,7 @@ export async function fetchSales(): Promise<Sale[]> {
       unitPrice: data.unitPrice ?? 0,
       total: data.total ?? 0,
       paymentMethod: data.paymentMethod ?? "efectivo",
+      channel: data.channel ?? "local",
       note: data.note ?? undefined,
     } as Sale;
   });

@@ -141,8 +141,10 @@ Funciona como un punto de venta, no como un formulario:
   no queda stock, la card se ve apagada y no se puede tocar.
 - **Carrito** a la derecha: cada línea con cantidad ajustable (+/−, tope en
   el stock disponible), botón para quitar, y el total general.
-- **Forma de pago**: Efectivo, Transferencia, Mercado Pago, Tarjeta o
-  Mixto.
+- **Forma de pago**: Efectivo, Transferencia o Posnet.
+- **Canal de venta**: Venta en local, Venta online o Venta en evento —
+  queda registrado junto a cada venta y se puede ver desglosado en
+  `/contabilidad`.
 - **"Vender algo que no está en el catálogo"**: un modo manual desplegable
   para cargar algo puntual (descripción, precio, cantidad) que no vale la
   pena tener como producto permanente — no descuenta stock de nada, porque

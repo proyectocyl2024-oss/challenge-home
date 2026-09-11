@@ -1,6 +1,15 @@
 [build]
+  base = "challenge-home"
   command = "npm run build"
   publish = ".next"
+
+# La clave de Firebase (AIza...) es pública a propósito — así funciona el SDK
+# de Firebase del lado del navegador, no es una contraseña ni un secreto real.
+# Netlify la marca como "posible secreto" por su formato; esto evita que el
+# build falle por esa falsa alarma (tal como sugiere el propio mensaje de
+# error de Netlify: https://ntl.fyi/configure-secrets-scanning).
+[build.environment]
+  SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

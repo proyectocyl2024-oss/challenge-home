@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchSales, deleteSale, updateSale, type Sale, type PaymentMethod } from "@/lib/sales";
+import { fetchSales, deleteSale, updateSale, type Sale, type PaymentMethod, type SaleChannel } from "@/lib/sales";
 import { adjustProductStock } from "@/lib/products";
 
 const formatARS = (value: number) =>
@@ -13,6 +13,13 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
   posnet: "Posnet",
+};
+
+const CHANNEL_LABELS: Record<SaleChannel, string> = {
+  local: "Local",
+  online: "Online",
+  evento: "Evento",
+  estudios: "Estudios",
 };
 
 export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
@@ -27,6 +34,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editPayment, setEditPayment] = useState<PaymentMethod>("efectivo");
+  const [editChannel, setEditChannel] = useState<SaleChannel>("local");
 
   async function load() {
     setLoading(true);
@@ -53,6 +61,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
     setEditQty(String(s.quantity));
     setEditPrice(String(s.unitPrice));
     setEditPayment(s.paymentMethod);
+    setEditChannel(s.channel ?? "local");
   }
 
   function cancelEdit() {
@@ -72,6 +81,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
         unitPrice: newPrice,
         total: newTotal,
         paymentMethod: editPayment,
+        channel: editChannel,
       });
 
       // Si está vinculada a un producto del catálogo, ajustamos el stock
@@ -162,7 +172,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr 0.8fr 1fr 1fr 1fr auto auto",
+                        gridTemplateColumns: "1fr 0.8fr 1fr 1fr 1fr 1fr auto auto",
                         gap: 8,
                         alignItems: "center",
                       }}
@@ -205,6 +215,17 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
                           </option>
                         ))}
                       </select>
+                      <select
+                        value={editChannel}
+                        onChange={(e) => setEditChannel(e.target.value as SaleChannel)}
+                        style={editInputStyle}
+                      >
+                        {Object.entries(CHANNEL_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
                       <button onClick={() => saveEdit(s)} style={saveBtn}>
                         Guardar
                       </button>
@@ -223,6 +244,7 @@ export default function SalesHistory({ refreshKey }: { refreshKey?: number }) {
                       </div>
                       <div style={{ width: 100, color: "rgba(36,19,34,0.6)" }}>
                         {PAYMENT_LABELS[s.paymentMethod]}
+                        <div style={{ fontSize: 11 }}>{CHANNEL_LABELS[s.channel ?? "local"]}</div>
                       </div>
                       <div style={{ width: 90, fontWeight: 600, textAlign: "right" }}>
                         {formatARS(s.total)}

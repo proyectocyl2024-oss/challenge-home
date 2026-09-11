@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchSales, updateSale, deleteSale, type Sale, type PaymentMethod } from "@/lib/sales";
+import { fetchSales, updateSale, deleteSale, type Sale, type PaymentMethod, type SaleChannel } from "@/lib/sales";
 import { adjustProductStock } from "@/lib/products";
 import InternalNav from "./InternalNav";
 
@@ -18,6 +18,13 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   posnet: "Posnet",
 };
 
+const CHANNEL_LABELS: Record<SaleChannel, string> = {
+  local: "Venta en local",
+  online: "Venta online",
+  evento: "Venta en evento",
+  estudios: "Venta a estudios",
+};
+
 type Filter = "hoy" | "semana" | "mes" | "todo";
 
 export default function ContabilidadPanel() {
@@ -31,6 +38,7 @@ export default function ContabilidadPanel() {
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editPayment, setEditPayment] = useState<PaymentMethod>("efectivo");
+  const [editChannel, setEditChannel] = useState<SaleChannel>("local");
   const [editDate, setEditDate] = useState("");
   const [editTime, setEditTime] = useState("");
   const [saving, setSaving] = useState(false);
@@ -88,6 +96,15 @@ export default function ContabilidadPanel() {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }, [filtered]);
 
+  const byChannel = useMemo(() => {
+    const map = new Map<SaleChannel, number>();
+    for (const s of filtered) {
+      const ch = s.channel ?? "local";
+      map.set(ch, (map.get(ch) ?? 0) + s.total);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [filtered]);
+
   const grandTotal = filtered.reduce((sum, s) => sum + s.total, 0);
   const totalUnits = filtered.reduce((sum, s) => sum + s.quantity, 0);
 
@@ -96,6 +113,7 @@ export default function ContabilidadPanel() {
     setEditQty(String(s.quantity));
     setEditPrice(String(s.unitPrice));
     setEditPayment(s.paymentMethod);
+    setEditChannel(s.channel ?? "local");
     setEditDate(s.date);
     setEditTime(s.time || "");
   }
@@ -117,6 +135,7 @@ export default function ContabilidadPanel() {
         unitPrice: newPrice,
         total: newQty * newPrice,
         paymentMethod: editPayment,
+        channel: editChannel,
       });
       // Ajustar stock por la diferencia, si la venta está vinculada a un producto del catálogo
       if (sale.productId) {
@@ -253,6 +272,22 @@ export default function ContabilidadPanel() {
         </div>
       )}
 
+      <h2 style={sectionTitle}>Por canal de venta</h2>
+      {byChannel.length === 0 ? (
+        <p style={{ color: "rgba(36,19,34,0.5)", fontSize: 14, marginBottom: 32 }}>
+          Sin datos en este período.
+        </p>
+      ) : (
+        <div style={{ marginBottom: 32 }}>
+          {byChannel.map(([ch, amount]) => (
+            <div key={ch} style={rowStyle}>
+              <div style={{ flex: 1 }}>{CHANNEL_LABELS[ch]}</div>
+              <div style={{ fontWeight: 600 }}>{formatARS(amount)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <h2 style={sectionTitle}>Historial de ventas</h2>
       {filtered.length === 0 ? (
         <p style={{ color: "rgba(36,19,34,0.5)", fontSize: 14 }}>Sin ventas en este período.</p>
@@ -306,6 +341,20 @@ export default function ContabilidadPanel() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label style={editLabel}>Canal</label>
+                  <select
+                    style={editInput}
+                    value={editChannel}
+                    onChange={(e) => setEditChannel(e.target.value as SaleChannel)}
+                  >
+                    {Object.entries(CHANNEL_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, marginTop: 4 }}>
                   <button
                     onClick={() => saveEdit(s)}
@@ -347,7 +396,10 @@ export default function ContabilidadPanel() {
                 <div style={{ flex: 1 }}>
                   {s.productName} · {s.quantity} u. × {formatARS(s.unitPrice)}
                 </div>
-                <div style={{ width: 100, color: "rgba(36,19,34,0.6)" }}>{PAYMENT_LABELS[s.paymentMethod]}</div>
+                <div style={{ width: 100, color: "rgba(36,19,34,0.6)" }}>
+                  {PAYMENT_LABELS[s.paymentMethod]}
+                  <div style={{ fontSize: 11 }}>{CHANNEL_LABELS[s.channel ?? "local"]}</div>
+                </div>
                 <div style={{ width: 90, fontWeight: 600, textAlign: "right" }}>{formatARS(s.total)}</div>
                 <button
                   onClick={() => startEdit(s)}
